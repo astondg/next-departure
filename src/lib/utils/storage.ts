@@ -61,7 +61,48 @@ function isLocalStorageAvailable(): boolean {
 }
 
 /**
+ * Cookie helper - get a cookie value
+ */
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [key, value] = cookie.trim().split('=');
+    if (key === name) {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Cookie helper - set a cookie value
+ * Uses a long expiry (1 year) for persistence
+ */
+function setCookie(name: string, value: string): void {
+  if (typeof document === 'undefined') return;
+
+  const maxAge = 365 * 24 * 60 * 60; // 1 year in seconds
+  const encoded = encodeURIComponent(value);
+  document.cookie = `${name}=${encoded};max-age=${maxAge};path=/;SameSite=Lax`;
+}
+
+/**
+ * Cookie helper - delete a cookie
+ */
+function deleteCookie(name: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=;max-age=0;path=/`;
+}
+
+/**
  * Load settings from storage
+ * Tries localStorage first, falls back to cookies for older browsers
  */
 export function loadSettings(): UserSettings {
   if (typeof window === 'undefined') {
@@ -69,11 +110,18 @@ export function loadSettings(): UserSettings {
   }
 
   try {
+    // Try localStorage first
     if (isLocalStorageAvailable()) {
       const stored = localStorage.getItem(SETTINGS_KEY);
       if (stored) {
         return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
       }
+    }
+
+    // Fall back to cookies
+    const cookieData = getCookie(SETTINGS_KEY);
+    if (cookieData) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(cookieData) };
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
@@ -84,16 +132,26 @@ export function loadSettings(): UserSettings {
 
 /**
  * Save settings to storage
+ * Saves to localStorage and cookies for maximum compatibility
  */
 export function saveSettings(settings: UserSettings): void {
   if (typeof window === 'undefined') {
     return;
   }
 
+  // Don't save lastLocation to reduce storage size
+  const { lastLocation, ...settingsToSave } = settings;
+
   try {
+    const json = JSON.stringify(settingsToSave);
+
+    // Save to localStorage if available
     if (isLocalStorageAvailable()) {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      localStorage.setItem(SETTINGS_KEY, json);
     }
+
+    // Also save to cookie as fallback (cookies have ~4KB limit, but settings are small)
+    setCookie(SETTINGS_KEY, json);
   } catch (error) {
     console.error('Failed to save settings:', error);
   }
@@ -111,6 +169,7 @@ export function clearSettings(): void {
     if (isLocalStorageAvailable()) {
       localStorage.removeItem(SETTINGS_KEY);
     }
+    deleteCookie(SETTINGS_KEY);
   } catch (error) {
     console.error('Failed to clear settings:', error);
   }

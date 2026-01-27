@@ -188,13 +188,20 @@ export function CombinedBoard({
             {formatLastUpdated(fetchedAt)}
           </p>
         </div>
-        <button
-          onClick={onSettingsClick}
+        <a
+          href="/settings"
+          onClick={(e) => {
+            // Use modal on JS-enabled browsers, link for fallback
+            if (typeof window !== 'undefined' && onSettingsClick) {
+              e.preventDefault();
+              onSettingsClick();
+            }
+          }}
           className="p-2 hover:bg-gray-100 rounded"
           title="Settings"
         >
           <GearIcon size={20} />
-        </button>
+        </a>
       </header>
 
       {/* Main content */}

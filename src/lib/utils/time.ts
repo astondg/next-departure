@@ -62,12 +62,26 @@ export function formatRelativeTime(
  */
 export function formatTime(isoTime: string, timezone?: string): string {
   const date = new Date(isoTime);
-  return date.toLocaleTimeString('en-AU', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timezone,
-  });
+
+  // Check for invalid date
+  if (isNaN(date.getTime())) {
+    return '--:--';
+  }
+
+  // Try modern API first, fall back to manual formatting for old browsers
+  try {
+    return date.toLocaleTimeString('en-AU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone,
+    });
+  } catch {
+    // Fallback for old browsers
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
 }
 
 /**
@@ -129,7 +143,17 @@ export function getDelayClass(delayMinutes: number): string {
  * Format "last updated" time
  */
 export function formatLastUpdated(isoTime: string): string {
+  if (!isoTime) {
+    return 'loading...';
+  }
+
   const date = new Date(isoTime);
+
+  // Check for invalid date (old browsers may not parse ISO strings)
+  if (isNaN(date.getTime())) {
+    return 'updated';
+  }
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSeconds = Math.round(diffMs / 1000);

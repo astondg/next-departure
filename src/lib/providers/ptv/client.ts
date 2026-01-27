@@ -98,8 +98,6 @@ export class PtvClient implements TransitProvider {
       this.config.baseUrl
     );
 
-    console.log('[PTV API] Request URL:', url);
-
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
@@ -109,8 +107,6 @@ export class PtvClient implements TransitProvider {
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('[PTV API] Error response:', errorBody);
       throw new Error(
         `PTV API error: ${response.status} ${response.statusText}`
       );
