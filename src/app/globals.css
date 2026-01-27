@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/**
+ * Next Departure - Global Styles
+ *
+ * Optimized for e-ink displays:
+ * - High contrast (pure black/white)
+ * - No gradients or subtle colors
+ * - Thick borders for visibility
+ * - Large, readable fonts
+ */
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+/* Force light mode for e-ink - no dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/**
+ * E-ink specific optimizations
+ */
+
+/* High contrast focus states */
+:focus-visible {
+  outline: 4px solid black;
+  outline-offset: 2px;
+}
+
+/* Remove animations on e-ink (they cause ghosting) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print styles (also useful for e-ink) */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+/**
+ * Departure board specific styles
+ */
+
+/* Status indicators using borders instead of colors */
+.on-time {
+  border-left: 4px solid black;
+}
+
+.slight-delay {
+  border-left: 4px dashed black;
+}
+
+.moderate-delay {
+  border-left: 8px solid black;
+}
+
+.major-delay {
+  border-left: 8px double black;
+}
+
+/* Cancelled service */
+.cancelled {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Platform badge */
+.platform-badge {
+  border: 2px solid black;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+/* Loading pulse animation (subtle for e-ink) */
+@keyframes eink-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse {
+  animation: eink-pulse 2s ease-in-out infinite;
+}
+
+/**
+ * Typography scale for readability
+ */
+.text-departure-time {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.text-route-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.text-destination {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+/**
+ * Utility classes
+ */
+
+/* Full-page board layout */
+.board-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Thick separator for sections */
+.thick-border {
+  border-width: 4px;
+  border-color: black;
+}
+
+/* Invert colors for headers */
+.inverted {
+  background-color: black;
+  color: white;
+}
