@@ -12,6 +12,7 @@ import { ServerBoard } from '@/components/ServerBoard';
 import { ClientEnhancements } from '@/components/ClientEnhancements';
 import { TransportMode, Departure } from '@/lib/providers/types';
 import { UserSettings, DEFAULT_SETTINGS } from '@/lib/utils/storage';
+import { getProvider, isProviderAvailable } from '@/lib/providers';
 
 export const metadata: Metadata = {
   title: 'Next Departure - E-ink Transit Display',
@@ -71,28 +72,22 @@ async function fetchDepartures(
   limit: number
 ): Promise<{ departures: Departure[]; stopName: string } | null> {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
+    if (!isProviderAvailable('ptv')) {
+      console.error('PTV provider not available');
+      return null;
+    }
 
-    const params = new URLSearchParams({
-      provider: 'ptv',
+    const provider = getProvider('ptv');
+    const result = await provider.getDepartures({
       stopId,
       mode,
-      limit: String(limit),
+      limit,
     });
 
-    const response = await fetch(`${baseUrl}/api/departures?${params}`, {
-      cache: 'no-store',
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return {
-        departures: data.departures || [],
-        stopName: data.stop?.name || 'Unknown Stop',
-      };
-    }
+    return {
+      departures: result.departures,
+      stopName: result.stop?.name || 'Unknown Stop',
+    };
   } catch (error) {
     console.error(`Error fetching ${mode} departures:`, error);
   }

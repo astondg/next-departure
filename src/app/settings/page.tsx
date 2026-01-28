@@ -9,6 +9,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { getProvider, isProviderAvailable } from '@/lib/providers';
 
 const SETTINGS_KEY = 'next-departure-settings';
 
@@ -112,21 +113,16 @@ async function searchStops(query: string): Promise<{ id: string; name: string }[
   if (!query || query.length < 3) return [];
 
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-
-    // Don't filter by mode - search all modes and let user select from results
-    // This matches client-side behavior where mode filter is optional
-    const params = new URLSearchParams({ provider: 'ptv', query });
-    const response = await fetch(`${baseUrl}/api/stops?${params}`, {
-      cache: 'no-store',
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return data.stops?.slice(0, 8) || [];
+    // Call provider directly instead of HTTP request to avoid Vercel deployment protection issues
+    if (!isProviderAvailable('ptv')) {
+      console.error('PTV provider not available');
+      return [];
     }
+
+    const provider = getProvider('ptv');
+    // Don't filter by mode - search all modes and let user select from results
+    const stops = await provider.searchStops(query);
+    return stops.slice(0, 8).map((stop) => ({ id: stop.id, name: stop.name }));
   } catch (error) {
     console.error('Search failed:', error);
   }
