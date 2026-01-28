@@ -108,7 +108,7 @@ async function removeStop(formData: FormData) {
   redirect('/settings');
 }
 
-async function searchStops(query: string, mode: string): Promise<{ id: string; name: string }[]> {
+async function searchStops(query: string): Promise<{ id: string; name: string }[]> {
   if (!query || query.length < 3) return [];
 
   try {
@@ -116,7 +116,9 @@ async function searchStops(query: string, mode: string): Promise<{ id: string; n
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000';
 
-    const params = new URLSearchParams({ provider: 'ptv', query, mode });
+    // Don't filter by mode - search all modes and let user select from results
+    // This matches client-side behavior where mode filter is optional
+    const params = new URLSearchParams({ provider: 'ptv', query });
     const response = await fetch(`${baseUrl}/api/stops?${params}`, {
       cache: 'no-store',
     });
@@ -155,7 +157,7 @@ export default async function SettingsPage({
 
   let searchResults: { id: string; name: string }[] = [];
   if (searchMode && searchQuery && searchQuery.length >= 3) {
-    searchResults = await searchStops(searchQuery, searchMode);
+    searchResults = await searchStops(searchQuery);
   }
 
   const getStopConfig = (mode: string): StopConfig | undefined => {
