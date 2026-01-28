@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Stop, TransportMode } from '@/lib/providers/types';
+import { Stop, TransportMode, Direction } from '@/lib/providers/types';
 import {
   UserSettings,
   StopConfig,
@@ -16,6 +16,7 @@ import {
   addStopForMode,
   removeStopForMode,
   toggleStopEnabled,
+  updateStopDirections,
 } from '@/lib/utils/storage';
 
 interface SettingsModalProps {
@@ -38,6 +39,160 @@ const MODE_CONFIG: {
   { mode: 'bus', label: 'Bus', icon: '🚌', settingsKey: 'busStops' },
 ];
 
+/**
+ * Direction picker component for configuring which directions to show
+ */
+function DirectionPicker({
+  config,
+  mode,
+  onUpdateDirections,
+  onClose,
+}: {
+  config: StopConfig;
+  mode: TransportMode;
+  onUpdateDirections: (directionIds: string[] | undefined, directionNames: Record<string, string>) => void;
+  onClose: () => void;
+}) {
+  const [availableDirections, setAvailableDirections] = useState<Direction[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(config.directionIds || [])
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAll, setShowAll] = useState(!config.directionIds || config.directionIds.length === 0);
+
+  // Fetch available directions from departures
+  useEffect(() => {
+    async function fetchDirections() {
+      setIsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          provider: 'ptv',
+          stopId: config.stop.id,
+          mode,
+          limit: '50', // Get more departures to capture all directions
+        });
+        const response = await fetch(`/api/departures?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Extract unique directions from departures
+          const dirMap = new Map<string, Direction>();
+          for (const dep of data.departures || []) {
+            if (dep.direction && !dirMap.has(dep.direction.id)) {
+              dirMap.set(dep.direction.id, dep.direction);
+            }
+          }
+          setAvailableDirections(Array.from(dirMap.values()));
+        }
+      } catch (error) {
+        console.error('Failed to fetch directions:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchDirections();
+  }, [config.stop.id, mode]);
+
+  const toggleDirection = (dirId: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(dirId)) {
+      newSelected.delete(dirId);
+    } else {
+      newSelected.add(dirId);
+    }
+    setSelectedIds(newSelected);
+    setShowAll(false);
+  };
+
+  const handleSave = () => {
+    if (showAll || selectedIds.size === 0) {
+      onUpdateDirections(undefined, {});
+    } else {
+      const dirNames: Record<string, string> = {};
+      for (const dir of availableDirections) {
+        if (selectedIds.has(dir.id)) {
+          dirNames[dir.id] = dir.name;
+        }
+      }
+      onUpdateDirections(Array.from(selectedIds), dirNames);
+    }
+    onClose();
+  };
+
+  return (
+    <div className="bg-gray-50 border border-black p-2 mt-1 text-sm">
+      <div className="font-medium mb-2">Filter directions:</div>
+
+      {isLoading ? (
+        <div className="text-xs py-2">Loading directions...</div>
+      ) : availableDirections.length === 0 ? (
+        <div className="text-xs py-2">No directions found</div>
+      ) : (
+        <div className="space-y-1">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={() => {
+                setShowAll(true);
+                setSelectedIds(new Set());
+              }}
+              className="w-4 h-4"
+            />
+            <span>All directions</span>
+          </label>
+          {availableDirections.map((dir) => (
+            <label key={dir.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!showAll && selectedIds.has(dir.id)}
+                onChange={() => toggleDirection(dir.id)}
+                className="w-4 h-4"
+              />
+              <span className="truncate">{dir.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={handleSave}
+          className="flex-1 px-2 py-1 bg-black text-white text-xs"
+        >
+          Save
+        </button>
+        <button
+          onClick={onClose}
+          className="px-2 py-1 border border-black text-xs"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Get a short display string for the direction filter
+ */
+function getDirectionFilterLabel(config: StopConfig): string | null {
+  if (!config.directionIds || config.directionIds.length === 0) {
+    return null;
+  }
+  if (!config.directionNames) {
+    return `${config.directionIds.length} dir`;
+  }
+  const names = config.directionIds
+    .map(id => config.directionNames?.[id])
+    .filter(Boolean);
+  if (names.length === 1) {
+    // Shorten single direction name
+    const name = names[0]!;
+    return name.length > 15 ? name.slice(0, 12) + '...' : name;
+  }
+  return `${names.length} directions`;
+}
+
 function StopListManager({
   mode,
   label,
@@ -47,6 +202,7 @@ function StopListManager({
   onAddStop,
   onRemoveStop,
   onToggleEnabled,
+  onUpdateDirections,
 }: {
   mode: TransportMode;
   label: string;
@@ -56,11 +212,13 @@ function StopListManager({
   onAddStop: (config: StopConfig) => void;
   onRemoveStop: (stopId: string) => void;
   onToggleEnabled: (stopId: string) => void;
+  onUpdateDirections: (stopId: string, directionIds: string[] | undefined, directionNames: Record<string, string>) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Stop[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [editingDirections, setEditingDirections] = useState<string | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Search for stops
@@ -141,26 +299,51 @@ function StopListManager({
       {/* List of configured stops */}
       {stops.length > 0 && (
         <div className="space-y-1 mb-2">
-          {stops.map((config) => (
-            <div key={config.stop.id} className="flex items-center gap-2 text-sm py-1">
-              <input
-                type="checkbox"
-                checked={config.enabled}
-                onChange={() => onToggleEnabled(config.stop.id)}
-                className="w-4 h-4 flex-shrink-0"
-              />
-              <span className={`flex-1 truncate ${!config.enabled ? 'opacity-50' : ''}`}>
-                {config.stop.name}
-              </span>
-              <button
-                onClick={() => onRemoveStop(config.stop.id)}
-                className="px-2 py-0.5 border border-black text-xs hover:bg-gray-100"
-                title="Remove stop"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {stops.map((config) => {
+            const dirLabel = getDirectionFilterLabel(config);
+            return (
+              <div key={config.stop.id}>
+                <div className="flex items-center gap-2 text-sm py-1">
+                  <input
+                    type="checkbox"
+                    checked={config.enabled}
+                    onChange={() => onToggleEnabled(config.stop.id)}
+                    className="w-4 h-4 flex-shrink-0"
+                  />
+                  <div className={`flex-1 min-w-0 ${!config.enabled ? 'opacity-50' : ''}`}>
+                    <div className="truncate">{config.stop.name}</div>
+                    <button
+                      onClick={() => setEditingDirections(
+                        editingDirections === config.stop.id ? null : config.stop.id
+                      )}
+                      className="text-xs text-gray-600 hover:text-black hover:underline"
+                    >
+                      {dirLabel ? `→ ${dirLabel}` : 'All directions'} ▾
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => onRemoveStop(config.stop.id)}
+                    className="px-2 py-0.5 border border-black text-xs hover:bg-gray-100"
+                    title="Remove stop"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Direction picker */}
+                {editingDirections === config.stop.id && (
+                  <DirectionPicker
+                    config={config}
+                    mode={mode}
+                    onUpdateDirections={(dirIds, dirNames) =>
+                      onUpdateDirections(config.stop.id, dirIds, dirNames)
+                    }
+                    onClose={() => setEditingDirections(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -251,6 +434,16 @@ export function SettingsModal({
 
   const handleToggleEnabled = (mode: TransportMode, stopId: string) => {
     const newSettings = toggleStopEnabled(settings, mode, stopId);
+    onSettingsChange(newSettings);
+  };
+
+  const handleUpdateDirections = (
+    mode: TransportMode,
+    stopId: string,
+    directionIds: string[] | undefined,
+    directionNames: Record<string, string>
+  ) => {
+    const newSettings = updateStopDirections(settings, mode, stopId, directionIds, directionNames);
     onSettingsChange(newSettings);
   };
 
@@ -346,6 +539,9 @@ export function SettingsModal({
                   onAddStop={(config) => handleAddStop(mode, config)}
                   onRemoveStop={(stopId) => handleRemoveStop(mode, stopId)}
                   onToggleEnabled={(stopId) => handleToggleEnabled(mode, stopId)}
+                  onUpdateDirections={(stopId, dirIds, dirNames) =>
+                    handleUpdateDirections(mode, stopId, dirIds, dirNames)
+                  }
                 />
               ))}
             </div>

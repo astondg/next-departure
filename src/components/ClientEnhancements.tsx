@@ -21,6 +21,7 @@ import {
   saveSettings,
   getEnabledStops,
   DEFAULT_SETTINGS,
+  EnabledStopInfo,
 } from '@/lib/utils/storage';
 import { CombinedBoard } from './CombinedBoard';
 import { SettingsModal } from './SettingsModal';
@@ -119,9 +120,9 @@ export function ClientEnhancements({
     saveSettings(settings);
   }, [jsEnabled, settings]);
 
-  // Fetch departures for a list of stops
+  // Fetch departures for a list of stops with optional direction filters
   const fetchDeparturesForStops = useCallback(async (
-    stops: { mode: TransportMode; stop: Stop }[]
+    stops: EnabledStopInfo[]
   ) => {
     if (stops.length === 0) {
       setSections([]);
@@ -130,13 +131,19 @@ export function ClientEnhancements({
 
     const newSections: ModeSection[] = [];
 
-    for (const { mode, stop } of stops) {
+    for (const { mode, stop, directionIds } of stops) {
       try {
+        // Fetch more departures if we're going to filter by direction
+        // This ensures we still get enough after filtering
+        const fetchLimit = directionIds && directionIds.length > 0
+          ? (settings.departuresPerMode + 2) * 3
+          : settings.departuresPerMode + 2;
+
         const params = new URLSearchParams({
           provider: 'ptv',
           stopId: stop.id,
           mode,
-          limit: String(settings.departuresPerMode + 2),
+          limit: String(fetchLimit),
           maxMinutes: String(settings.maxMinutes),
         });
 
@@ -144,11 +151,21 @@ export function ClientEnhancements({
 
         if (response.ok) {
           const data = await response.json();
+          let departures: Departure[] = data.departures || [];
+
+          // Apply direction filter if configured
+          if (directionIds && directionIds.length > 0) {
+            const directionSet = new Set(directionIds);
+            departures = departures.filter(
+              (dep) => dep.direction && directionSet.has(dep.direction.id)
+            );
+          }
+
           newSections.push({
             mode,
             stopId: stop.id,
             stopName: data.stop?.name || stop.name,
-            departures: data.departures || [],
+            departures,
             isLoading: false,
           });
         } else {
@@ -183,14 +200,18 @@ export function ClientEnhancements({
   // Fetch departures based on current mode (home or nearby)
   const fetchDepartures = useCallback(async () => {
     if (settings.nearbyMode) {
-      // In nearby mode, use nearby stops
+      // In nearby mode, use nearby stops (no direction filter - show all directions)
       if (nearbyStops.length > 0) {
-        const stops = nearbyStops.map(ns => ({ mode: ns.mode, stop: ns.stop }));
+        const stops: EnabledStopInfo[] = nearbyStops.map(ns => ({
+          mode: ns.mode,
+          stop: ns.stop,
+          // No direction filter for nearby mode - show all directions
+        }));
         await fetchDeparturesForStops(stops);
       }
       // If no nearby stops yet, they'll be fetched by location detection
     } else {
-      // In home mode, use configured stops
+      // In home mode, use configured stops (with their direction filters)
       const enabledStops = getEnabledStops(settings);
       await fetchDeparturesForStops(enabledStops);
     }

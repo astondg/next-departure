@@ -14,6 +14,14 @@ import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 export interface StopConfig {
   stop: Stop;
   enabled: boolean;
+  /**
+   * Direction filter for this stop.
+   * - undefined or empty array: show all directions
+   * - populated array: only show departures in these directions
+   */
+  directionIds?: string[];
+  /** Cached direction names for display (so we don't need to re-fetch) */
+  directionNames?: Record<string, string>;
 }
 
 /**
@@ -319,24 +327,74 @@ export function toggleStopEnabled(
 }
 
 /**
+ * Update direction filter for a stop
+ * @param directionIds - Array of direction IDs to filter to, or undefined/empty for all directions
+ * @param directionNames - Map of direction ID to name for display
+ */
+export function updateStopDirections(
+  settings: UserSettings,
+  mode: TransportMode,
+  stopId: string,
+  directionIds: string[] | undefined,
+  directionNames: Record<string, string>
+): UserSettings {
+  const existing = getStopsForMode(settings, mode);
+  const updated = existing.map(s =>
+    s.stop.id === stopId
+      ? {
+          ...s,
+          directionIds: directionIds && directionIds.length > 0 ? directionIds : undefined,
+          directionNames: Object.keys(directionNames).length > 0 ? directionNames : undefined,
+        }
+      : s
+  );
+  return setStopsForMode(settings, mode, updated);
+}
+
+/**
+ * Enabled stop with direction filter info
+ */
+export interface EnabledStopInfo {
+  mode: TransportMode;
+  stop: Stop;
+  directionIds?: string[];
+  directionNames?: Record<string, string>;
+}
+
+/**
  * Get all enabled stops across all modes
  */
-export function getEnabledStops(settings: UserSettings): { mode: TransportMode; stop: Stop }[] {
-  const stops: { mode: TransportMode; stop: Stop }[] = [];
+export function getEnabledStops(settings: UserSettings): EnabledStopInfo[] {
+  const stops: EnabledStopInfo[] = [];
 
   for (const config of settings.tramStops || []) {
     if (config.enabled) {
-      stops.push({ mode: 'tram', stop: config.stop });
+      stops.push({
+        mode: 'tram',
+        stop: config.stop,
+        directionIds: config.directionIds,
+        directionNames: config.directionNames,
+      });
     }
   }
   for (const config of settings.trainStops || []) {
     if (config.enabled) {
-      stops.push({ mode: 'train', stop: config.stop });
+      stops.push({
+        mode: 'train',
+        stop: config.stop,
+        directionIds: config.directionIds,
+        directionNames: config.directionNames,
+      });
     }
   }
   for (const config of settings.busStops || []) {
     if (config.enabled) {
-      stops.push({ mode: 'bus', stop: config.stop });
+      stops.push({
+        mode: 'bus',
+        stop: config.stop,
+        directionIds: config.directionIds,
+        directionNames: config.directionNames,
+      });
     }
   }
 
