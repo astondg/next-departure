@@ -4,12 +4,13 @@
  * Returns a PNG image of the departure board optimized for ESP32 e-ink displays.
  * Uses pure B/W colors with thick borders and large fonts.
  *
- * GET /api/og/board?stops=tram:1001,train:2001&width=800&height=480&limit=3&scale=2
+ * GET /api/og/board?stops=tram:1001,train:2001&width=800&height=480&limit=3&scale=2&orientation=landscape
  *
  * Query parameters:
  *   - stops: comma-separated mode:stopId pairs (required)
  *   - width: image width in pixels (default 800, max 1200)
  *   - height: image height in pixels (default 480, max 800)
+ *   - orientation: 'landscape' (default) or 'portrait' - swaps width/height defaults
  *   - limit: max departures per stop (default 3, max 5)
  *   - maxMinutes: time window in minutes (default 30, max 120)
  *   - showAbsolute: show absolute times instead of relative (default false)
@@ -139,8 +140,17 @@ export async function GET(request: NextRequest) {
 
   // Parse query parameters
   const stopsParam = searchParams.get('stops');
-  const baseWidth = Math.min(parseInt(searchParams.get('width') || '800', 10), 1200);
-  const baseHeight = Math.min(parseInt(searchParams.get('height') || '480', 10), 800);
+  const orientation = searchParams.get('orientation') || 'landscape';
+  const isPortrait = orientation === 'portrait';
+
+  // Default dimensions based on orientation
+  const defaultWidth = isPortrait ? 480 : 800;
+  const defaultHeight = isPortrait ? 800 : 480;
+  const maxWidth = isPortrait ? 800 : 1200;
+  const maxHeight = isPortrait ? 1200 : 800;
+
+  const baseWidth = Math.min(parseInt(searchParams.get('width') || String(defaultWidth), 10), maxWidth);
+  const baseHeight = Math.min(parseInt(searchParams.get('height') || String(defaultHeight), 10), maxHeight);
   const limit = Math.min(parseInt(searchParams.get('limit') || '3', 10), 5);
   const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
   const showAbsolute = searchParams.get('showAbsolute') === 'true';
@@ -155,37 +165,61 @@ export async function GET(request: NextRequest) {
   }
 
   // Load fonts in parallel with departure data
+  const stopRequests = parseStops(stopsParam);
   const [interBoldData, interRegularData, ...stopDataResults] = await Promise.all([
     interBold,
     interRegular,
-    ...parseStops(stopsParam).map(({ mode, stopId }) =>
+    ...stopRequests.map(({ mode, stopId }) =>
       fetchStopDepartures(baseUrl, mode, stopId, limit, maxMinutes)
     ),
   ]);
 
   const stopData = stopDataResults as StopData[];
-
-  // Calculate layout - scale all dimensions
-  const headerHeight = Math.round(44 * scale);
-  const rowHeight = Math.round(56 * scale);
-  const sectionGap = Math.round(10 * scale);
   const stopCount = stopData.length;
 
-  // Font sizes scaled for crispness
+  // Calculate total content rows (headers + departures + gaps)
+  const totalDepartures = stopData.reduce(
+    (sum, stop) => sum + Math.max(stop.departures.length, 1), // At least 1 for "no departures" message
+    0
+  );
+  const totalHeaders = stopCount;
+  const totalGaps = stopCount - 1;
+
+  // Dynamic layout: distribute available height across all rows
+  const padding = Math.round(8 * scale);
+  const sectionGap = Math.round(6 * scale);
+  const borderWidth = Math.round(3 * scale);
+
+  // Available height after padding and gaps
+  const availableHeight = height - (padding * 2) - (sectionGap * totalGaps);
+
+  // Headers take ~40% of row height, departures take full row height
+  // Total "row units": headers count as 0.6, departures count as 1.0
+  const headerRatio = 0.55;
+  const totalRowUnits = (totalHeaders * headerRatio) + totalDepartures;
+  const baseRowHeight = availableHeight / totalRowUnits;
+
+  const rowHeight = Math.round(baseRowHeight);
+  const headerHeight = Math.round(baseRowHeight * headerRatio);
+
+  // Scale fonts proportionally to row height (base row height ~56px at scale 1)
+  const fontScale = (rowHeight / 56) * scale;
+
   const fontSize = {
-    modeLabel: Math.round(20 * scale),
-    stopName: Math.round(18 * scale),
-    routeNumber: Math.round(28 * scale),
-    destination: Math.round(20 * scale),
-    platform: Math.round(16 * scale),
-    time: Math.round(32 * scale),
-    message: Math.round(18 * scale),
+    modeLabel: Math.round(18 * fontScale),
+    stopName: Math.round(16 * fontScale),
+    routeNumber: Math.round(26 * fontScale),
+    destination: Math.round(18 * fontScale),
+    platform: Math.round(14 * fontScale),
+    time: Math.round(30 * fontScale),
+    message: Math.round(16 * fontScale),
   };
 
-  // Border and spacing scaled
-  const borderWidth = Math.round(3 * scale);
-  const padding = Math.round(10 * scale);
-  const headerPadding = Math.round(8 * scale);
+  const headerPadding = Math.round(6 * scale);
+
+  // Route number width scales with font and orientation
+  const routeNumWidth = Math.round(isPortrait ? 60 * fontScale : 72 * fontScale);
+  const timeWidth = Math.round(isPortrait ? 70 * fontScale : 90 * fontScale);
 
   return new ImageResponse(
     (
@@ -201,166 +235,166 @@ export async function GET(request: NextRequest) {
         }}
       >
         {stopData.map((stop, stopIndex) => (
-          <div
-            key={`${stop.mode}-${stop.stopId}`}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : '0',
-              flex: 1,
-            }}
-          >
-            {/* Stop header */}
             <div
+              key={`${stop.mode}-${stop.stopId}`}
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                backgroundColor: '#000000',
-                color: '#ffffff',
-                padding: `${headerPadding}px ${padding + 4}px`,
-                height: `${headerHeight}px`,
+                flexDirection: 'column',
+                marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : '0',
               }}
             >
-              <span
-                style={{
-                  fontWeight: 700,
-                  fontSize: `${fontSize.modeLabel}px`,
-                  letterSpacing: '0.1em',
-                  marginRight: `${Math.round(14 * scale)}px`,
-                }}
-              >
-                {getModeLabel(stop.mode)}
-              </span>
-              <span
-                style={{
-                  fontSize: `${fontSize.stopName}px`,
-                  fontWeight: 500,
-                  opacity: 0.9,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {stop.stopName}
-              </span>
-            </div>
-
-            {/* Departures */}
-            {stop.error ? (
+              {/* Stop header */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  height: `${rowHeight}px`,
-                  borderBottom: `${borderWidth}px solid #000000`,
-                  fontSize: `${fontSize.message}px`,
-                  fontWeight: 500,
-                  color: '#444444',
+                  backgroundColor: '#000000',
+                  color: '#ffffff',
+                  padding: `0 ${padding + 4}px`,
+                  height: `${headerHeight}px`,
                 }}
               >
-                {stop.error}
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: `${fontSize.modeLabel}px`,
+                    letterSpacing: '0.08em',
+                    marginRight: `${Math.round(12 * fontScale)}px`,
+                  }}
+                >
+                  {getModeLabel(stop.mode)}
+                </span>
+                <span
+                  style={{
+                    fontSize: `${fontSize.stopName}px`,
+                    fontWeight: 400,
+                    opacity: 0.9,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {stop.stopName}
+                </span>
               </div>
-            ) : stop.departures.length === 0 ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: `${rowHeight}px`,
-                  borderBottom: `${borderWidth}px solid #000000`,
-                  fontSize: `${fontSize.message}px`,
-                  fontWeight: 500,
-                  color: '#444444',
-                }}
-              >
-                No departures
-              </div>
-            ) : (
-              stop.departures.map((departure, depIndex) => {
-                const timeStr = formatDepartureTime(
-                  departure.scheduledTime,
-                  departure.estimatedTime,
-                  showAbsolute
-                );
-                const isDeparting = timeStr === 'now';
 
-                return (
-                  <div
-                    key={departure.id || depIndex}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      height: `${rowHeight}px`,
-                      padding: `0 ${padding + 4}px`,
-                      borderBottom: `${borderWidth}px solid #000000`,
-                      backgroundColor: isDeparting ? '#000000' : '#ffffff',
-                      color: isDeparting ? '#ffffff' : '#000000',
-                    }}
-                  >
-                    {/* Route number */}
-                    <span
+              {/* Departures */}
+              {stop.error ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: `${rowHeight}px`,
+                    borderBottom: `${borderWidth}px solid #000000`,
+                    fontSize: `${fontSize.message}px`,
+                    fontWeight: 400,
+                    color: '#444444',
+                  }}
+                >
+                  {stop.error}
+                </div>
+              ) : stop.departures.length === 0 ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: `${rowHeight}px`,
+                    borderBottom: `${borderWidth}px solid #000000`,
+                    fontSize: `${fontSize.message}px`,
+                    fontWeight: 400,
+                    color: '#444444',
+                  }}
+                >
+                  No departures
+                </div>
+              ) : (
+                stop.departures.map((departure, depIndex) => {
+                  const timeStr = formatDepartureTime(
+                    departure.scheduledTime,
+                    departure.estimatedTime,
+                    showAbsolute
+                  );
+                  const isDeparting = timeStr === 'now';
+
+                  return (
+                    <div
+                      key={departure.id || depIndex}
                       style={{
-                        fontWeight: 700,
-                        fontSize: `${fontSize.routeNumber}px`,
-                        width: `${Math.round(72 * scale)}px`,
-                        textAlign: 'center',
-                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: `${rowHeight}px`,
+                        padding: `0 ${padding + 4}px`,
+                        borderBottom: `${borderWidth}px solid #000000`,
+                        backgroundColor: isDeparting ? '#000000' : '#ffffff',
+                        color: isDeparting ? '#ffffff' : '#000000',
                       }}
                     >
-                      {departure.routeName}
-                    </span>
-
-                    {/* Destination */}
-                    <span
-                      style={{
-                        flex: 1,
-                        fontSize: `${fontSize.destination}px`,
-                        fontWeight: 500,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        marginLeft: `${Math.round(10 * scale)}px`,
-                        marginRight: `${Math.round(10 * scale)}px`,
-                      }}
-                    >
-                      {departure.destination}
-                    </span>
-
-                    {/* Platform */}
-                    {departure.platform && (
+                      {/* Route number */}
                       <span
                         style={{
-                          fontSize: `${fontSize.platform}px`,
-                          border: `${borderWidth}px solid currentColor`,
-                          padding: `${Math.round(3 * scale)}px ${Math.round(8 * scale)}px`,
                           fontWeight: 700,
-                          marginRight: `${Math.round(10 * scale)}px`,
+                          fontSize: `${fontSize.routeNumber}px`,
+                          width: `${routeNumWidth}px`,
+                          textAlign: 'center',
                           flexShrink: 0,
                         }}
                       >
-                        P{departure.platform}
+                        {departure.routeName}
                       </span>
-                    )}
 
-                    {/* Time */}
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        fontSize: `${fontSize.time}px`,
-                        minWidth: `${Math.round(90 * scale)}px`,
-                        textAlign: 'right',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {timeStr}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        ))}
+                      {/* Destination */}
+                      <span
+                        style={{
+                          flex: 1,
+                          fontSize: `${fontSize.destination}px`,
+                          fontWeight: 400,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          marginLeft: `${Math.round(8 * fontScale)}px`,
+                          marginRight: `${Math.round(8 * fontScale)}px`,
+                        }}
+                      >
+                        {departure.destination}
+                      </span>
+
+                      {/* Platform */}
+                      {departure.platform && (
+                        <span
+                          style={{
+                            fontSize: `${fontSize.platform}px`,
+                            border: `${borderWidth}px solid currentColor`,
+                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
+                            fontWeight: 700,
+                            marginRight: `${Math.round(8 * fontScale)}px`,
+                            flexShrink: 0,
+                          }}
+                        >
+                          P{departure.platform}
+                        </span>
+                      )}
+
+                      {/* Time */}
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: `${fontSize.time}px`,
+                          minWidth: `${timeWidth}px`,
+                          textAlign: 'right',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {timeStr}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )
+        )}
       </div>
     ),
     {
