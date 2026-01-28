@@ -45,6 +45,10 @@ export function DepartureRow({
     .filter(Boolean)
     .join(' ');
 
+  // For trains, routeName is often the full line name (e.g., "Hurstbridge")
+  // which is redundant with the destination - don't show it
+  const isTrain = departure.mode === 'train';
+
   return (
     <div className={rowClasses}>
       {/* Mode indicator */}
@@ -52,13 +56,15 @@ export function DepartureRow({
         <TransportIcon mode={departure.mode as TransportMode} size={24} />
       </span>
 
-      {/* Route number */}
-      <span className="font-bold text-2xl w-16 text-center flex-shrink-0">
-        {departure.routeName}
-      </span>
+      {/* Route number - only for non-trains */}
+      {!isTrain && (
+        <span className="font-bold text-2xl w-16 text-center flex-shrink-0 truncate">
+          {departure.routeName}
+        </span>
+      )}
 
       {/* Destination */}
-      <span className="flex-1 text-lg truncate font-medium">
+      <span className="flex-1 text-lg truncate font-medium min-w-0">
         {departure.destination}
       </span>
 

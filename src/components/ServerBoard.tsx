@@ -64,6 +64,10 @@ function CompactDepartureRow({
   // Don't show departed services
   if (isGone) return null;
 
+  // For trains, routeName is often the full line name (e.g., "Hurstbridge")
+  // which is redundant with the direction header - don't show it
+  const isTrain = departure.mode === 'train';
+
   return (
     <div
       style={{
@@ -76,18 +80,23 @@ function CompactDepartureRow({
         borderBottom: '1px solid #ccc',
       }}
     >
-      {/* Route number - prominent */}
-      <span
-        style={{
-          fontWeight: 'bold',
-          fontSize: '1.75rem',
-          minWidth: '64px',
-          textAlign: 'center',
-          flexShrink: 0,
-        }}
-      >
-        {departure.routeName}
-      </span>
+      {/* Route number - only for non-trains */}
+      {!isTrain && (
+        <span
+          style={{
+            fontWeight: 'bold',
+            fontSize: '1.75rem',
+            minWidth: '64px',
+            textAlign: 'center',
+            flexShrink: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {departure.routeName}
+        </span>
+      )}
 
       {/* Destination - secondary */}
       <span

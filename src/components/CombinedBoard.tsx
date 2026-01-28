@@ -7,11 +7,15 @@
  * Primary display for the home page.
  */
 
+import { useState, useEffect, useRef } from 'react';
 import { Departure, TransportMode } from '@/lib/providers/types';
 import { formatDepartureTime } from '@/lib/utils/time';
 import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
 import { GearIcon } from './GearIcon';
 import { TransportIcon, getModeLabel } from './TransportIcon';
+
+/** Duration of fade-out animation in ms */
+const FADE_OUT_DURATION = 500;
 
 interface ModeSection {
   mode: TransportMode;
@@ -41,10 +45,12 @@ function CompactDepartureRow({
   departure,
   showAbsoluteTime,
   now,
+  isFadingOut = false,
 }: {
   departure: Departure;
   showAbsoluteTime: boolean;
   now: Date;
+  isFadingOut?: boolean;
 }) {
   const timeInfo = formatDepartureTime(
     departure.scheduledTime,
@@ -53,21 +59,26 @@ function CompactDepartureRow({
   );
 
   const isDeparting = timeInfo.relative === 'now';
-  const isGone = timeInfo.relative === 'gone';
+
+  // For trains, routeName is often the full line name (e.g., "Hurstbridge")
+  // which is redundant with the direction header - don't show it
+  const isTrain = departure.mode === 'train';
 
   return (
     <div
       className={`flex items-center gap-2 py-2 px-2 ${
         isDeparting ? 'bg-black text-white' : ''
-      } ${isGone ? 'opacity-30' : ''}`}
+      } ${isFadingOut ? 'departure-fading-out' : ''}`}
     >
-      {/* Route number */}
-      <span className="font-bold text-xl w-14 text-center flex-shrink-0">
-        {departure.routeName}
-      </span>
+      {/* Route number - only for non-trains */}
+      {!isTrain && (
+        <span className="font-bold text-xl w-14 text-center flex-shrink-0 truncate">
+          {departure.routeName}
+        </span>
+      )}
 
       {/* Destination */}
-      <span className="flex-1 truncate text-base">
+      <span className="flex-1 truncate text-base min-w-0">
         {departure.destination}
       </span>
 
@@ -136,6 +147,7 @@ function groupDeparturesByDirection(
 
 /**
  * Section for one transport mode
+ * Tracks departures that are fading out for smooth exit animations
  */
 function ModeSectionComponent({
   section,
@@ -148,16 +160,80 @@ function ModeSectionComponent({
   departuresPerMode: number;
   now: Date;
 }) {
+  // Track IDs of departures that are currently fading out
+  const [fadingOutIds, setFadingOutIds] = useState<Set<string>>(new Set());
+  const previousDepartureIdsRef = useRef<Set<string>>(new Set());
+
+  // Categorize departures
+  const upcomingDepartures: Departure[] = [];
+  const goneDepartures: Departure[] = [];
+
+  for (const d of section.departures) {
+    const timeInfo = formatDepartureTime(d.scheduledTime, d.estimatedTime, now);
+    if (timeInfo.relative === 'gone') {
+      goneDepartures.push(d);
+    } else {
+      upcomingDepartures.push(d);
+    }
+  }
+
+  // Detect newly "gone" departures and start their fade-out animation
+  useEffect(() => {
+    const currentUpcomingIds = new Set(upcomingDepartures.map(d => d.id));
+    const previousIds = previousDepartureIdsRef.current;
+
+    // Find IDs that were visible before but are now gone
+    const newlyGoneIds: string[] = [];
+    for (const id of previousIds) {
+      if (!currentUpcomingIds.has(id)) {
+        // This departure was visible but is now gone
+        const isStillInData = goneDepartures.some(d => d.id === id);
+        if (isStillInData && !fadingOutIds.has(id)) {
+          newlyGoneIds.push(id);
+        }
+      }
+    }
+
+    if (newlyGoneIds.length > 0) {
+      // Start fade-out for newly gone departures
+      setFadingOutIds(prev => {
+        const next = new Set(prev);
+        for (const id of newlyGoneIds) {
+          next.add(id);
+        }
+        return next;
+      });
+
+      // Remove from fading set after animation completes
+      setTimeout(() => {
+        setFadingOutIds(prev => {
+          const next = new Set(prev);
+          for (const id of newlyGoneIds) {
+            next.delete(id);
+          }
+          return next;
+        });
+      }, FADE_OUT_DURATION);
+    }
+
+    // Update ref for next comparison
+    previousDepartureIdsRef.current = currentUpcomingIds;
+  }, [upcomingDepartures, goneDepartures, fadingOutIds]);
+
+  // Build the list of departures to display (upcoming + currently fading)
+  const fadingDepartures = goneDepartures.filter(d => fadingOutIds.has(d.id));
+  const displayDepartures = [...upcomingDepartures, ...fadingDepartures];
+
   // Group by direction if flag is set, otherwise just take top N
-  const shouldGroup = section.groupByDirection && section.departures.length > 0;
+  const shouldGroup = section.groupByDirection && displayDepartures.length > 0;
 
   const directionGroups = shouldGroup
-    ? groupDeparturesByDirection(section.departures, departuresPerMode)
+    ? groupDeparturesByDirection(displayDepartures, departuresPerMode + fadingDepartures.length)
     : null;
 
   const flatDepartures = shouldGroup
     ? null
-    : section.departures.slice(0, departuresPerMode);
+    : displayDepartures.slice(0, departuresPerMode + fadingDepartures.length);
 
   return (
     <div className="mb-4">
@@ -197,6 +273,7 @@ function ModeSectionComponent({
                   departure={departure}
                   showAbsoluteTime={showAbsoluteTime}
                   now={now}
+                  isFadingOut={fadingOutIds.has(departure.id)}
                 />
               ))}
             </div>
@@ -211,6 +288,7 @@ function ModeSectionComponent({
               departure={departure}
               showAbsoluteTime={showAbsoluteTime}
               now={now}
+              isFadingOut={fadingOutIds.has(departure.id)}
             />
           ))}
         </div>

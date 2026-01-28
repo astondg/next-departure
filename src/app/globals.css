@@ -162,3 +162,32 @@ body {
   background-color: black;
   color: white;
 }
+
+/**
+ * Departure fade-out animation
+ * Used when a departure becomes "gone" - fades out and collapses
+ */
+@keyframes departure-fade-out {
+  0% {
+    opacity: 1;
+    max-height: 60px;
+    transform: translateX(0);
+  }
+  70% {
+    opacity: 0;
+    max-height: 60px;
+    transform: translateX(10px);
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    transform: translateX(10px);
+  }
+}
+
+.departure-fading-out {
+  animation: departure-fade-out 0.5s ease-out forwards;
+  overflow: hidden;
+}
