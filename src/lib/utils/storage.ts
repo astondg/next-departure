@@ -53,6 +53,8 @@ export interface UserSettings {
   showAbsoluteTime: boolean;
   /** Whether to use nearby stops based on current location instead of configured stops */
   nearbyMode: boolean;
+  /** Number of nearby stops to show per transport mode (default 1) */
+  nearbyStopsPerMode: number;
   /** User's last known location (for auto-detection) */
   lastLocation?: {
     latitude: number;
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   maxMinutes: 30,
   showAbsoluteTime: false,
   nearbyMode: false,
+  nearbyStopsPerMode: 1,
 };
 
 /**

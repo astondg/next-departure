@@ -236,38 +236,46 @@ export function ClientEnhancements({
     }
     setIsLoadingNearby(true);
 
+    const stopsPerMode = settings.nearbyStopsPerMode || 1;
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         const modes: TransportMode[] = ['tram', 'train', 'bus'];
-        const allNearby: NearbyStop[] = [];
 
-        for (const mode of modes) {
-          try {
-            const params = new URLSearchParams({
-              provider: 'ptv',
-              lat: String(latitude),
-              lon: String(longitude),
-              mode,
-              distance: '1000',
-            });
+        // Fetch all modes in parallel
+        const results = await Promise.all(
+          modes.map(async (mode): Promise<NearbyStop[]> => {
+            try {
+              const params = new URLSearchParams({
+                provider: 'ptv',
+                lat: String(latitude),
+                lon: String(longitude),
+                mode,
+                distance: '1000',
+              });
 
-            const response = await fetch(`/api/nearby?${params.toString()}`);
-            if (response.ok) {
-              const data = await response.json();
-              if (data.stops?.length > 0) {
-                const closest = data.stops[0];
-                allNearby.push({
-                  mode,
-                  stop: closest,
-                  distance: closest.distance,
-                });
+              const response = await fetch(`/api/nearby?${params.toString()}`);
+              if (response.ok) {
+                const data = await response.json();
+                if (data.stops?.length > 0) {
+                  // Take up to stopsPerMode stops for this mode
+                  return data.stops.slice(0, stopsPerMode).map((stop: Stop & { distance: number }) => ({
+                    mode,
+                    stop,
+                    distance: stop.distance,
+                  }));
+                }
               }
+            } catch (error) {
+              console.error(`Error fetching nearby ${mode} stops:`, error);
             }
-          } catch (error) {
-            console.error(`Error fetching nearby ${mode} stops:`, error);
-          }
-        }
+            return [];
+          })
+        );
+
+        // Flatten the results
+        const allNearby = results.flat();
 
         if (mountedRef.current) {
           setNearbyStops(allNearby);
@@ -285,7 +293,7 @@ export function ClientEnhancements({
         maximumAge: 60000, // Cache location for 1 minute
       }
     );
-  }, []);
+  }, [settings.nearbyStopsPerMode]);
 
   // Auto-refresh with visibility handling
   useEffect(() => {

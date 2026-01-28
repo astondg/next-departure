@@ -547,6 +547,35 @@ export function SettingsModal({
             </div>
           )}
 
+          {/* Nearby mode settings */}
+          {settings.nearbyMode && (
+            <div className="mb-6">
+              <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
+                Nearby Settings
+              </h3>
+              <label className="flex items-center justify-between">
+                <span className="text-sm">Stops per mode</span>
+                <select
+                  value={settings.nearbyStopsPerMode || 1}
+                  onChange={(e) =>
+                    onSettingsChange({
+                      ...settings,
+                      nearbyStopsPerMode: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="border border-black p-1 text-sm"
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                </select>
+              </label>
+              <p className="text-xs text-gray-600 mt-1">
+                Number of nearby stops to show for each transport type
+              </p>
+            </div>
+          )}
+
           {/* Other settings */}
           <div className="mb-6">
             <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
