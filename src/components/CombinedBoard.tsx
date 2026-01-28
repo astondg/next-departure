@@ -11,6 +11,7 @@ import { Departure, TransportMode } from '@/lib/providers/types';
 import { formatDepartureTime } from '@/lib/utils/time';
 import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
 import { GearIcon } from './GearIcon';
+import { TransportIcon, getModeLabel } from './TransportIcon';
 
 interface ModeSection {
   mode: TransportMode;
@@ -32,28 +33,6 @@ interface CombinedBoardProps {
   isLoadingNearby?: boolean;
 }
 
-/**
- * Get icon for transport mode
- */
-function getModeIcon(mode: TransportMode): string {
-  switch (mode) {
-    case 'train':
-      return '🚆';
-    case 'tram':
-      return '🚊';
-    case 'bus':
-      return '🚌';
-    default:
-      return '•';
-  }
-}
-
-/**
- * Get mode label
- */
-function getModeLabel(mode: TransportMode): string {
-  return mode.charAt(0).toUpperCase() + mode.slice(1);
-}
 
 /**
  * Single departure row - compact version
@@ -184,7 +163,7 @@ function ModeSectionComponent({
     <div className="mb-4">
       {/* Mode header - compact */}
       <div className="flex items-center gap-2 px-2 py-1 bg-black text-white">
-        <span className="text-lg">{getModeIcon(section.mode)}</span>
+        <TransportIcon mode={section.mode} size={18} className="text-white" />
         <span className="font-bold text-sm uppercase tracking-wider">
           {getModeLabel(section.mode)}
         </span>

@@ -18,6 +18,7 @@ import {
   toggleStopEnabled,
   updateStopDirections,
 } from '@/lib/utils/storage';
+import { TransportIcon, getModeLabel } from './TransportIcon';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -31,12 +32,11 @@ interface SettingsModalProps {
 const MODE_CONFIG: {
   mode: TransportMode;
   label: string;
-  icon: string;
   settingsKey: 'tramStops' | 'trainStops' | 'busStops';
 }[] = [
-  { mode: 'tram', label: 'Tram', icon: '🚊', settingsKey: 'tramStops' },
-  { mode: 'train', label: 'Train', icon: '🚆', settingsKey: 'trainStops' },
-  { mode: 'bus', label: 'Bus', icon: '🚌', settingsKey: 'busStops' },
+  { mode: 'tram', label: 'Tram', settingsKey: 'tramStops' },
+  { mode: 'train', label: 'Train', settingsKey: 'trainStops' },
+  { mode: 'bus', label: 'Bus', settingsKey: 'busStops' },
 ];
 
 /**
@@ -196,7 +196,6 @@ function getDirectionFilterLabel(config: StopConfig): string | null {
 function StopListManager({
   mode,
   label,
-  icon,
   stops,
   nearbyStop,
   onAddStop,
@@ -206,7 +205,6 @@ function StopListManager({
 }: {
   mode: TransportMode;
   label: string;
-  icon: string;
   stops: StopConfig[];
   nearbyStop?: Stop & { distance: number };
   onAddStop: (config: StopConfig) => void;
@@ -289,7 +287,7 @@ function StopListManager({
   return (
     <div className="border-b border-black py-3">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-xl">{icon}</span>
+        <TransportIcon mode={mode} size={20} />
         <span className="font-bold">{label}</span>
         <span className="text-xs text-gray-600 ml-auto">
           {stops.length} stop{stops.length !== 1 ? 's' : ''}
@@ -528,12 +526,11 @@ export function SettingsModal({
               <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
                 Your Stops
               </h3>
-              {MODE_CONFIG.map(({ mode, label, icon }) => (
+              {MODE_CONFIG.map(({ mode, label }) => (
                 <StopListManager
                   key={mode}
                   mode={mode}
                   label={label}
-                  icon={icon}
                   stops={getStopsForMode(settings, mode)}
                   nearbyStop={getNearbyForMode(mode)}
                   onAddStop={(config) => handleAddStop(mode, config)}

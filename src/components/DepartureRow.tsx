@@ -7,8 +7,9 @@
  * Optimized for high contrast and quick scanning.
  */
 
-import { Departure } from '@/lib/providers/types';
+import { Departure, TransportMode } from '@/lib/providers/types';
 import { formatDepartureTime } from '@/lib/utils/time';
+import { TransportIcon } from './TransportIcon';
 
 interface DepartureRowProps {
   departure: Departure;
@@ -16,31 +17,6 @@ interface DepartureRowProps {
   showAbsoluteTime?: boolean;
   /** Current time for relative calculations */
   now?: Date;
-}
-
-/**
- * Get the mode icon/emoji for display
- * Using simple text for e-ink compatibility
- */
-function getModeIndicator(mode: Departure['mode']): string {
-  switch (mode) {
-    case 'train':
-      return '🚆';
-    case 'tram':
-      return '🚊';
-    case 'bus':
-      return '🚌';
-    case 'ferry':
-      return '⛴';
-    case 'metro':
-      return '🚇';
-    case 'light_rail':
-      return '🚈';
-    case 'coach':
-      return '🚐';
-    default:
-      return '•';
-  }
 }
 
 export function DepartureRow({
@@ -72,8 +48,8 @@ export function DepartureRow({
   return (
     <div className={rowClasses}>
       {/* Mode indicator */}
-      <span className="text-xl w-8 text-center flex-shrink-0" aria-hidden="true">
-        {getModeIndicator(departure.mode)}
+      <span className="w-8 flex-shrink-0 flex justify-center" aria-hidden="true">
+        <TransportIcon mode={departure.mode as TransportMode} size={24} />
       </span>
 
       {/* Route number */}

@@ -9,13 +9,21 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Stop, TransportMode } from '@/lib/providers/types';
 import Link from 'next/link';
+import { TransportIcon, getModeLabel } from '@/components/TransportIcon';
 
 const TRANSPORT_MODES: { value: TransportMode | ''; label: string }[] = [
   { value: '', label: 'All modes' },
-  { value: 'train', label: '🚆 Train' },
-  { value: 'tram', label: '🚊 Tram' },
-  { value: 'bus', label: '🚌 Bus' },
+  { value: 'train', label: 'Train' },
+  { value: 'tram', label: 'Tram' },
+  { value: 'bus', label: 'Bus' },
 ];
+
+function getPrimaryMode(modes: TransportMode[]): TransportMode {
+  if (modes.includes('train')) return 'train';
+  if (modes.includes('tram')) return 'tram';
+  if (modes.includes('metro')) return 'metro';
+  return modes[0] || 'bus';
+}
 
 export function StopSearch() {
   const [query, setQuery] = useState('');
@@ -142,13 +150,7 @@ export function StopSearch() {
               onClick={() => setSelectedStop(stop)}
               className="w-full p-3 text-left border-b border-black last:border-b-0 hover:bg-gray-100 flex items-center gap-3"
             >
-              <span className="text-xl">
-                {stop.modes.includes('train')
-                  ? '🚆'
-                  : stop.modes.includes('tram')
-                  ? '🚊'
-                  : '🚌'}
-              </span>
+              <TransportIcon mode={getPrimaryMode(stop.modes)} size={24} />
               <span className="flex-1">
                 <span className="font-bold">{stop.name}</span>
                 <span className="text-sm text-gray-600 ml-2">
@@ -164,13 +166,7 @@ export function StopSearch() {
       {selectedStop && (
         <div className="border-4 border-black p-4">
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">
-              {selectedStop.modes.includes('train')
-                ? '🚆'
-                : selectedStop.modes.includes('tram')
-                ? '🚊'
-                : '🚌'}
-            </span>
+            <TransportIcon mode={getPrimaryMode(selectedStop.modes)} size={28} />
             <div>
               <h3 className="text-xl font-bold">{selectedStop.name}</h3>
               <p className="text-sm text-gray-600">Stop ID: {selectedStop.id}</p>
