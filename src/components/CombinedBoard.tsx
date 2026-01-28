@@ -96,7 +96,11 @@ function CompactDepartureRow({
         </span>
         {timeInfo.isRealTime && (
           <span className="text-xs">
-            {timeInfo.delayMinutes > 2 ? `+${timeInfo.delayMinutes}` : 'live'}
+            {timeInfo.delayMinutes < -2
+              ? `${timeInfo.delayMinutes}` /* Early arrival: -3, -5, etc */
+              : timeInfo.delayMinutes > 2
+              ? `+${timeInfo.delayMinutes}` /* Late: +3, +5, etc */
+              : 'live' /* On time or minor variance */}
           </span>
         )}
       </div>

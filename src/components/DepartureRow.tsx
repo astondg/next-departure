@@ -86,7 +86,11 @@ export function DepartureRow({
         {/* Real-time indicator */}
         {timeInfo.isRealTime && !isCancelled && (
           <span className="text-xs uppercase tracking-wider">
-            {isDelayed ? `+${timeInfo.delayMinutes}` : 'live'}
+            {timeInfo.delayMinutes < -2
+              ? `${timeInfo.delayMinutes}`
+              : isDelayed
+              ? `+${timeInfo.delayMinutes}`
+              : 'live'}
           </span>
         )}
       </div>

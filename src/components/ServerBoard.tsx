@@ -144,9 +144,13 @@ function CompactDepartureRow({
         >
           {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
         </span>
-        {timeInfo.isRealTime && timeInfo.delayMinutes > 2 && (
+        {timeInfo.isRealTime && (
           <span style={{ fontSize: '0.875rem', opacity: 0.7 }}>
-            +{timeInfo.delayMinutes} late
+            {timeInfo.delayMinutes < -2
+              ? `${timeInfo.delayMinutes} early`
+              : timeInfo.delayMinutes > 2
+              ? `+${timeInfo.delayMinutes} late`
+              : 'live'}
           </span>
         )}
       </div>
