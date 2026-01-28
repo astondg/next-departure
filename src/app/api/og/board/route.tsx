@@ -44,31 +44,49 @@ function getModeLabel(mode: TransportMode): string {
   return mode.toUpperCase();
 }
 
+interface TimeInfo {
+  display: string;
+  isRealTime: boolean;
+  delayMinutes: number;
+}
+
 function formatDepartureTime(
   scheduledTime: string,
   estimatedTime?: string,
   showAbsolute: boolean = false
-): string {
+): TimeInfo {
   const effectiveTime = estimatedTime || scheduledTime;
   const targetTime = new Date(effectiveTime);
   const now = new Date();
 
+  // Calculate delay (positive = late, negative = early)
+  let delayMinutes = 0;
+  if (estimatedTime) {
+    const scheduled = new Date(scheduledTime).getTime();
+    const estimated = new Date(estimatedTime).getTime();
+    delayMinutes = Math.round((estimated - scheduled) / 1000 / 60);
+  }
+
   if (showAbsolute) {
     const hours = String(targetTime.getHours()).padStart(2, '0');
     const minutes = String(targetTime.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
+    return { display: `${hours}:${minutes}`, isRealTime: !!estimatedTime, delayMinutes };
   }
 
   const diffMs = targetTime.getTime() - now.getTime();
   const diffMinutes = Math.round(diffMs / 1000 / 60);
 
-  if (diffMinutes < 0) return 'gone';
-  if (diffMinutes === 0) return 'now';
-  if (diffMinutes < 60) return `${diffMinutes}m`;
+  let display: string;
+  if (diffMinutes < 0) display = 'gone';
+  else if (diffMinutes === 0) display = 'now';
+  else if (diffMinutes < 60) display = `${diffMinutes}m`;
+  else {
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    display = minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
+  }
 
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
+  return { display, isRealTime: !!estimatedTime, delayMinutes };
 }
 
 async function fetchStopDepartures(
@@ -114,11 +132,12 @@ async function fetchStopDepartures(
       };
     }
 
-    // Filter out departed services
+    // Filter out departed services (same logic as client/server dashboards)
     const now = new Date();
     const upcoming = (result.departures || []).filter((d: Departure) => {
       const time = new Date(d.estimatedTime || d.scheduledTime);
-      return time.getTime() >= now.getTime() - 60000;
+      const diffMinutes = Math.round((time.getTime() - now.getTime()) / 1000 / 60);
+      return diffMinutes >= 0; // Filter out "gone" departures
     });
 
     return {
@@ -334,12 +353,22 @@ export async function GET(request: NextRequest) {
                 </div>
               ) : (
                 stop.departures.map((departure, depIndex) => {
-                  const timeStr = formatDepartureTime(
+                  const timeInfo = formatDepartureTime(
                     departure.scheduledTime,
                     departure.estimatedTime,
                     showAbsolute
                   );
-                  const isDeparting = timeStr === 'now';
+                  const isDeparting = timeInfo.display === 'now';
+                  const isTrain = departure.mode === 'train';
+
+                  // Delay indicator text (compact for image)
+                  const delayText = timeInfo.isRealTime
+                    ? timeInfo.delayMinutes < -2
+                      ? `${timeInfo.delayMinutes}`
+                      : timeInfo.delayMinutes > 2
+                      ? `+${timeInfo.delayMinutes}`
+                      : '•' // Dot indicates live/on-time
+                    : '';
 
                   return (
                     <div
@@ -354,18 +383,20 @@ export async function GET(request: NextRequest) {
                         color: isDeparting ? '#ffffff' : '#000000',
                       }}
                     >
-                      {/* Route number */}
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontSize: `${fontSize.routeNumber}px`,
-                          width: `${routeNumWidth}px`,
-                          textAlign: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {departure.routeName}
-                      </span>
+                      {/* Route number - hide for trains (redundant with destination) */}
+                      {!isTrain && (
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: `${fontSize.routeNumber}px`,
+                            width: `${routeNumWidth}px`,
+                            textAlign: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {departure.routeName}
+                        </span>
+                      )}
 
                       {/* Destination */}
                       <span
@@ -376,7 +407,7 @@ export async function GET(request: NextRequest) {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          marginLeft: `${Math.round(8 * fontScale)}px`,
+                          marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
                           marginRight: `${Math.round(8 * fontScale)}px`,
                         }}
                       >
@@ -399,18 +430,36 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
-                      {/* Time */}
-                      <span
+                      {/* Time with delay indicator */}
+                      <div
                         style={{
-                          fontWeight: 700,
-                          fontSize: `${fontSize.time}px`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
                           minWidth: `${timeWidth}px`,
-                          textAlign: 'right',
                           flexShrink: 0,
                         }}
                       >
-                        {timeStr}
-                      </span>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: `${fontSize.time}px`,
+                          }}
+                        >
+                          {timeInfo.display}
+                        </span>
+                        {delayText && (
+                          <span
+                            style={{
+                              fontSize: `${Math.round(12 * fontScale)}px`,
+                              fontWeight: 400,
+                              opacity: 0.7,
+                            }}
+                          >
+                            {delayText}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })
