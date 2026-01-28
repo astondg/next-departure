@@ -10,6 +10,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getProvider, isProviderAvailable } from '@/lib/providers';
+import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 
 const SETTINGS_KEY = 'next-departure-settings';
 
@@ -28,7 +29,7 @@ interface UserSettings {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  refreshInterval: 30,
+  refreshInterval: DEFAULT_REFRESH_INTERVAL,
   departuresPerMode: 2,
   showAbsoluteTime: false,
 };
@@ -64,7 +65,7 @@ async function updateDisplaySettings(formData: FormData) {
 
   const settings = await getSettings();
   settings.departuresPerMode = parseInt(formData.get('departuresPerMode') as string, 10) || 2;
-  settings.refreshInterval = parseInt(formData.get('refreshInterval') as string, 10) || 30;
+  settings.refreshInterval = parseInt(formData.get('refreshInterval') as string, 10) || DEFAULT_REFRESH_INTERVAL;
   settings.showAbsoluteTime = formData.get('showAbsoluteTime') === 'on';
 
   await saveSettingsCookie(settings);

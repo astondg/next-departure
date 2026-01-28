@@ -19,6 +19,7 @@ import {
   ProviderId,
   TransportMode,
 } from '@/lib/providers';
+import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 import { BoardClient } from './BoardClient';
 
 interface PageProps {
@@ -147,7 +148,7 @@ export default async function BoardPage({ params, searchParams }: PageProps) {
 
   // Parse parameters
   const transportMode = mode as TransportMode | undefined;
-  const refreshInterval = refresh ? parseInt(refresh, 10) : 30;
+  const refreshInterval = refresh ? parseInt(refresh, 10) : DEFAULT_REFRESH_INTERVAL;
   const maxResults = limit ? parseInt(limit, 10) : 10;
 
   // Fetch initial data server-side

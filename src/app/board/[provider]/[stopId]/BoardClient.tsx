@@ -12,6 +12,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DeparturesResponse, TransportMode } from '@/lib/providers/types';
 import { ProviderId } from '@/lib/providers';
+import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 import { DepartureBoard } from '@/components/DepartureBoard';
 import { RefreshController } from '@/components/RefreshController';
 
@@ -35,7 +36,7 @@ export function BoardClient({
   directionId,
   routeId,
   limit = 10,
-  refreshInterval = 30,
+  refreshInterval = DEFAULT_REFRESH_INTERVAL,
   title,
 }: BoardClientProps) {
   const [data, setData] = useState<DeparturesResponse>(initialData);

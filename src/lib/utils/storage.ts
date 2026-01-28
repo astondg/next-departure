@@ -6,6 +6,7 @@
  */
 
 import { Stop, TransportMode } from '@/lib/providers/types';
+import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 
 /**
  * User's configured stops for each transport mode
@@ -41,7 +42,7 @@ export interface UserSettings {
 
 const SETTINGS_KEY = 'next-departure-settings';
 export const DEFAULT_SETTINGS: UserSettings = {
-  refreshInterval: 30,
+  refreshInterval: DEFAULT_REFRESH_INTERVAL,
   departuresPerMode: 2,
   showAbsoluteTime: false,
 };
