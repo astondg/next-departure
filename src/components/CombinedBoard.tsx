@@ -19,6 +19,8 @@ interface ModeSection {
   departures: Departure[];
   isLoading: boolean;
   error?: string;
+  /** If true, group departures by direction and show N per direction */
+  groupByDirection?: boolean;
 }
 
 interface CombinedBoardProps {
@@ -113,9 +115,50 @@ function CompactDepartureRow({
 }
 
 /**
+ * Group departures by direction
+ */
+interface DirectionGroup {
+  directionId: string;
+  directionName: string;
+  departures: Departure[];
+}
+
+function groupDeparturesByDirection(
+  departures: Departure[],
+  maxPerDirection: number
+): DirectionGroup[] {
+  const groups = new Map<string, DirectionGroup>();
+
+  for (const dep of departures) {
+    const dirId = dep.direction?.id || 'unknown';
+    const dirName = dep.direction?.name || 'Unknown';
+
+    if (!groups.has(dirId)) {
+      groups.set(dirId, {
+        directionId: dirId,
+        directionName: dirName,
+        departures: [],
+      });
+    }
+
+    const group = groups.get(dirId)!;
+    if (group.departures.length < maxPerDirection) {
+      group.departures.push(dep);
+    }
+  }
+
+  // Sort groups by the earliest departure time
+  return Array.from(groups.values()).sort((a, b) => {
+    const aTime = a.departures[0]?.estimatedTime || a.departures[0]?.scheduledTime || '';
+    const bTime = b.departures[0]?.estimatedTime || b.departures[0]?.scheduledTime || '';
+    return aTime.localeCompare(bTime);
+  });
+}
+
+/**
  * Section for one transport mode
  */
-function ModeSection({
+function ModeSectionComponent({
   section,
   showAbsoluteTime,
   departuresPerMode,
@@ -126,7 +169,16 @@ function ModeSection({
   departuresPerMode: number;
   now: Date;
 }) {
-  const displayDepartures = section.departures.slice(0, departuresPerMode);
+  // Group by direction if flag is set, otherwise just take top N
+  const shouldGroup = section.groupByDirection && section.departures.length > 0;
+
+  const directionGroups = shouldGroup
+    ? groupDeparturesByDirection(section.departures, departuresPerMode)
+    : null;
+
+  const flatDepartures = shouldGroup
+    ? null
+    : section.departures.slice(0, departuresPerMode);
 
   return (
     <div className="mb-4">
@@ -150,9 +202,31 @@ function ModeSection({
         <div className="py-2 px-2 text-sm border-l-4 border-black">
           {section.error}
         </div>
-      ) : displayDepartures.length > 0 ? (
+      ) : shouldGroup && directionGroups ? (
+        /* Grouped by direction */
         <div className="border-l-2 border-black">
-          {displayDepartures.map((departure) => (
+          {directionGroups.map((group, idx) => (
+            <div key={group.directionId}>
+              {/* Direction header */}
+              <div className={`px-2 py-1 bg-gray-100 text-xs font-medium uppercase tracking-wider text-gray-600 ${idx > 0 ? 'border-t border-gray-300' : ''}`}>
+                {group.directionName}
+              </div>
+              {/* Departures for this direction */}
+              {group.departures.map((departure) => (
+                <CompactDepartureRow
+                  key={departure.id}
+                  departure={departure}
+                  showAbsoluteTime={showAbsoluteTime}
+                  now={now}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : flatDepartures && flatDepartures.length > 0 ? (
+        /* Flat list (single direction or filtered) */
+        <div className="border-l-2 border-black">
+          {flatDepartures.map((departure) => (
             <CompactDepartureRow
               key={departure.id}
               departure={departure}
@@ -240,7 +314,7 @@ export function CombinedBoard({
             {isNearbyMode ? (
               // In nearby mode, show all sections directly
               sections.map((section) => (
-                <ModeSection
+                <ModeSectionComponent
                   key={`${section.mode}-${section.stopId}`}
                   section={section}
                   showAbsoluteTime={settings.showAbsoluteTime}
@@ -255,7 +329,7 @@ export function CombinedBoard({
                   enabledStops.some((es) => es.stop.id === s.stopId)
                 )
                 .map((section) => (
-                  <ModeSection
+                  <ModeSectionComponent
                     key={`${section.mode}-${section.stopId}`}
                     section={section}
                     showAbsoluteTime={settings.showAbsoluteTime}

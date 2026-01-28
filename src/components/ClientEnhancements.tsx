@@ -33,6 +33,7 @@ interface ModeSection {
   departures: Departure[];
   isLoading: boolean;
   error?: string;
+  groupByDirection?: boolean;
 }
 
 interface NearbyStop {
@@ -133,11 +134,16 @@ export function ClientEnhancements({
 
     for (const { mode, stop, directionIds } of stops) {
       try {
-        // Fetch more departures if we're going to filter by direction
-        // This ensures we still get enough after filtering
-        const fetchLimit = directionIds && directionIds.length > 0
-          ? (settings.departuresPerMode + 2) * 3
-          : settings.departuresPerMode + 2;
+        // Determine if we should group by direction
+        // Group when: no direction filter (showing all directions)
+        const hasDirectionFilter = directionIds && directionIds.length > 0;
+        const groupByDirection = !hasDirectionFilter;
+
+        // Fetch more departures when showing all directions (need N per direction)
+        // or when filtering (need enough to fill N after filtering)
+        const fetchLimit = groupByDirection
+          ? (settings.departuresPerMode + 2) * 4  // Enough for multiple directions
+          : (settings.departuresPerMode + 2) * 3; // Enough after filtering
 
         const params = new URLSearchParams({
           provider: 'ptv',
@@ -154,7 +160,7 @@ export function ClientEnhancements({
           let departures: Departure[] = data.departures || [];
 
           // Apply direction filter if configured
-          if (directionIds && directionIds.length > 0) {
+          if (hasDirectionFilter) {
             const directionSet = new Set(directionIds);
             departures = departures.filter(
               (dep) => dep.direction && directionSet.has(dep.direction.id)
@@ -167,6 +173,7 @@ export function ClientEnhancements({
             stopName: data.stop?.name || stop.name,
             departures,
             isLoading: false,
+            groupByDirection,
           });
         } else {
           newSections.push({
