@@ -4,7 +4,16 @@
  * Returns a PNG image of the departure board optimized for ESP32 e-ink displays.
  * Uses pure B/W colors with thick borders and large fonts.
  *
- * GET /api/og/board?stops=tram:1001,train:2001&width=800&height=480&limit=3
+ * GET /api/og/board?stops=tram:1001,train:2001&width=800&height=480&limit=3&scale=2
+ *
+ * Query parameters:
+ *   - stops: comma-separated mode:stopId pairs (required)
+ *   - width: image width in pixels (default 800, max 1200)
+ *   - height: image height in pixels (default 480, max 800)
+ *   - limit: max departures per stop (default 3, max 5)
+ *   - maxMinutes: time window in minutes (default 30, max 120)
+ *   - showAbsolute: show absolute times instead of relative (default false)
+ *   - scale: render at higher resolution for crispness (default 1, max 3)
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -12,6 +21,15 @@ import { NextRequest } from 'next/server';
 import { TransportMode, Departure } from '@/lib/providers/types';
 
 export const runtime = 'edge';
+
+// Load Inter font for crisp rendering
+const interBold = fetch(
+  new URL('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff', import.meta.url)
+).then((res) => res.arrayBuffer());
+
+const interRegular = fetch(
+  new URL('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff', import.meta.url)
+).then((res) => res.arrayBuffer());
 
 interface StopData {
   mode: TransportMode;
@@ -121,29 +139,53 @@ export async function GET(request: NextRequest) {
 
   // Parse query parameters
   const stopsParam = searchParams.get('stops');
-  const width = Math.min(parseInt(searchParams.get('width') || '800', 10), 1200);
-  const height = Math.min(parseInt(searchParams.get('height') || '480', 10), 800);
+  const baseWidth = Math.min(parseInt(searchParams.get('width') || '800', 10), 1200);
+  const baseHeight = Math.min(parseInt(searchParams.get('height') || '480', 10), 800);
   const limit = Math.min(parseInt(searchParams.get('limit') || '3', 10), 5);
   const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
   const showAbsolute = searchParams.get('showAbsolute') === 'true';
+  const scale = Math.min(Math.max(parseFloat(searchParams.get('scale') || '1'), 1), 3);
+
+  // Apply scale for higher resolution rendering
+  const width = Math.round(baseWidth * scale);
+  const height = Math.round(baseHeight * scale);
 
   if (!stopsParam) {
     return new Response('Missing required parameter: stops', { status: 400 });
   }
 
-  // Parse stops and fetch departures in parallel
-  const stopRequests = parseStops(stopsParam);
-  const stopData = await Promise.all(
-    stopRequests.map(({ mode, stopId }) =>
+  // Load fonts in parallel with departure data
+  const [interBoldData, interRegularData, ...stopDataResults] = await Promise.all([
+    interBold,
+    interRegular,
+    ...parseStops(stopsParam).map(({ mode, stopId }) =>
       fetchStopDepartures(baseUrl, mode, stopId, limit, maxMinutes)
-    )
-  );
+    ),
+  ]);
 
-  // Calculate layout
-  const headerHeight = 36;
-  const rowHeight = 48;
-  const sectionGap = 8;
+  const stopData = stopDataResults as StopData[];
+
+  // Calculate layout - scale all dimensions
+  const headerHeight = Math.round(44 * scale);
+  const rowHeight = Math.round(56 * scale);
+  const sectionGap = Math.round(10 * scale);
   const stopCount = stopData.length;
+
+  // Font sizes scaled for crispness
+  const fontSize = {
+    modeLabel: Math.round(20 * scale),
+    stopName: Math.round(18 * scale),
+    routeNumber: Math.round(28 * scale),
+    destination: Math.round(20 * scale),
+    platform: Math.round(16 * scale),
+    time: Math.round(32 * scale),
+    message: Math.round(18 * scale),
+  };
+
+  // Border and spacing scaled
+  const borderWidth = Math.round(3 * scale);
+  const padding = Math.round(10 * scale);
+  const headerPadding = Math.round(8 * scale);
 
   return new ImageResponse(
     (
@@ -154,8 +196,8 @@ export async function GET(request: NextRequest) {
           width: '100%',
           height: '100%',
           backgroundColor: '#ffffff',
-          fontFamily: 'system-ui, sans-serif',
-          padding: '8px',
+          fontFamily: 'Inter, sans-serif',
+          padding: `${padding}px`,
         }}
       >
         {stopData.map((stop, stopIndex) => (
@@ -175,24 +217,25 @@ export async function GET(request: NextRequest) {
                 alignItems: 'center',
                 backgroundColor: '#000000',
                 color: '#ffffff',
-                padding: '6px 12px',
+                padding: `${headerPadding}px ${padding + 4}px`,
                 height: `${headerHeight}px`,
               }}
             >
               <span
                 style={{
-                  fontWeight: 'bold',
-                  fontSize: '18px',
+                  fontWeight: 700,
+                  fontSize: `${fontSize.modeLabel}px`,
                   letterSpacing: '0.1em',
-                  marginRight: '12px',
+                  marginRight: `${Math.round(14 * scale)}px`,
                 }}
               >
                 {getModeLabel(stop.mode)}
               </span>
               <span
                 style={{
-                  fontSize: '16px',
-                  opacity: 0.85,
+                  fontSize: `${fontSize.stopName}px`,
+                  fontWeight: 500,
+                  opacity: 0.9,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -210,9 +253,10 @@ export async function GET(request: NextRequest) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   height: `${rowHeight}px`,
-                  borderBottom: '2px solid #000000',
-                  fontSize: '16px',
-                  color: '#666666',
+                  borderBottom: `${borderWidth}px solid #000000`,
+                  fontSize: `${fontSize.message}px`,
+                  fontWeight: 500,
+                  color: '#444444',
                 }}
               >
                 {stop.error}
@@ -224,9 +268,10 @@ export async function GET(request: NextRequest) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   height: `${rowHeight}px`,
-                  borderBottom: '2px solid #000000',
-                  fontSize: '16px',
-                  color: '#666666',
+                  borderBottom: `${borderWidth}px solid #000000`,
+                  fontSize: `${fontSize.message}px`,
+                  fontWeight: 500,
+                  color: '#444444',
                 }}
               >
                 No departures
@@ -247,8 +292,8 @@ export async function GET(request: NextRequest) {
                       display: 'flex',
                       alignItems: 'center',
                       height: `${rowHeight}px`,
-                      padding: '0 12px',
-                      borderBottom: '2px solid #000000',
+                      padding: `0 ${padding + 4}px`,
+                      borderBottom: `${borderWidth}px solid #000000`,
                       backgroundColor: isDeparting ? '#000000' : '#ffffff',
                       color: isDeparting ? '#ffffff' : '#000000',
                     }}
@@ -256,9 +301,9 @@ export async function GET(request: NextRequest) {
                     {/* Route number */}
                     <span
                       style={{
-                        fontWeight: 'bold',
-                        fontSize: '24px',
-                        width: '64px',
+                        fontWeight: 700,
+                        fontSize: `${fontSize.routeNumber}px`,
+                        width: `${Math.round(72 * scale)}px`,
                         textAlign: 'center',
                         flexShrink: 0,
                       }}
@@ -270,12 +315,13 @@ export async function GET(request: NextRequest) {
                     <span
                       style={{
                         flex: 1,
-                        fontSize: '18px',
+                        fontSize: `${fontSize.destination}px`,
+                        fontWeight: 500,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        marginLeft: '8px',
-                        marginRight: '8px',
+                        marginLeft: `${Math.round(10 * scale)}px`,
+                        marginRight: `${Math.round(10 * scale)}px`,
                       }}
                     >
                       {departure.destination}
@@ -285,11 +331,11 @@ export async function GET(request: NextRequest) {
                     {departure.platform && (
                       <span
                         style={{
-                          fontSize: '14px',
-                          border: '2px solid currentColor',
-                          padding: '2px 6px',
-                          fontWeight: 'bold',
-                          marginRight: '8px',
+                          fontSize: `${fontSize.platform}px`,
+                          border: `${borderWidth}px solid currentColor`,
+                          padding: `${Math.round(3 * scale)}px ${Math.round(8 * scale)}px`,
+                          fontWeight: 700,
+                          marginRight: `${Math.round(10 * scale)}px`,
                           flexShrink: 0,
                         }}
                       >
@@ -300,9 +346,9 @@ export async function GET(request: NextRequest) {
                     {/* Time */}
                     <span
                       style={{
-                        fontWeight: 'bold',
-                        fontSize: '28px',
-                        minWidth: '80px',
+                        fontWeight: 700,
+                        fontSize: `${fontSize.time}px`,
+                        minWidth: `${Math.round(90 * scale)}px`,
                         textAlign: 'right',
                         flexShrink: 0,
                       }}
@@ -320,6 +366,20 @@ export async function GET(request: NextRequest) {
     {
       width,
       height,
+      fonts: [
+        {
+          name: 'Inter',
+          data: interBoldData,
+          style: 'normal',
+          weight: 700,
+        },
+        {
+          name: 'Inter',
+          data: interRegularData,
+          style: 'normal',
+          weight: 400,
+        },
+      ],
       headers: {
         'Cache-Control': 'public, max-age=30',
       },
