@@ -28,6 +28,7 @@ const SETTINGS_KEY = 'next-departure-settings';
 
 interface ModeSection {
   mode: TransportMode;
+  stopId: string;
   stopName: string;
   departures: Departure[];
   isLoading: boolean;
@@ -53,14 +54,20 @@ async function getSettings(): Promise<UserSettings> {
 function getEnabledStops(settings: UserSettings): { mode: TransportMode; stop: { id: string; name: string } }[] {
   const stops: { mode: TransportMode; stop: { id: string; name: string } }[] = [];
 
-  if (settings.tramStop?.enabled) {
-    stops.push({ mode: 'tram', stop: settings.tramStop.stop });
+  for (const config of settings.tramStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'tram', stop: config.stop });
+    }
   }
-  if (settings.trainStop?.enabled) {
-    stops.push({ mode: 'train', stop: settings.trainStop.stop });
+  for (const config of settings.trainStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'train', stop: config.stop });
+    }
   }
-  if (settings.busStop?.enabled) {
-    stops.push({ mode: 'bus', stop: settings.busStop.stop });
+  for (const config of settings.busStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'bus', stop: config.stop });
+    }
   }
 
   return stops;
@@ -69,7 +76,8 @@ function getEnabledStops(settings: UserSettings): { mode: TransportMode; stop: {
 async function fetchDepartures(
   stopId: string,
   mode: TransportMode,
-  limit: number
+  limit: number,
+  maxMinutes: number
 ): Promise<{ departures: Departure[]; stopName: string } | null> {
   try {
     if (!isProviderAvailable('ptv')) {
@@ -82,6 +90,7 @@ async function fetchDepartures(
       stopId,
       mode,
       limit,
+      maxMinutes,
     });
 
     return {
@@ -106,12 +115,14 @@ export default async function HomePage() {
       const result = await fetchDepartures(
         stop.id,
         mode,
-        settings.departuresPerMode + 2
+        settings.departuresPerMode + 2,
+        settings.maxMinutes
       );
 
       if (result) {
         return {
           mode,
+          stopId: stop.id,
           stopName: result.stopName,
           departures: result.departures,
           isLoading: false,
@@ -120,6 +131,7 @@ export default async function HomePage() {
 
       return {
         mode,
+        stopId: stop.id,
         stopName: stop.name,
         departures: [],
         isLoading: false,

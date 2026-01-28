@@ -12,8 +12,10 @@ import { Stop, TransportMode } from '@/lib/providers/types';
 import {
   UserSettings,
   StopConfig,
-  setStopForMode,
-  getStopForMode,
+  getStopsForMode,
+  addStopForMode,
+  removeStopForMode,
+  toggleStopEnabled,
 } from '@/lib/utils/storage';
 
 interface SettingsModalProps {
@@ -29,27 +31,31 @@ const MODE_CONFIG: {
   mode: TransportMode;
   label: string;
   icon: string;
-  settingsKey: 'tramStop' | 'trainStop' | 'busStop';
+  settingsKey: 'tramStops' | 'trainStops' | 'busStops';
 }[] = [
-  { mode: 'tram', label: 'Tram', icon: '🚊', settingsKey: 'tramStop' },
-  { mode: 'train', label: 'Train', icon: '🚆', settingsKey: 'trainStop' },
-  { mode: 'bus', label: 'Bus', icon: '🚌', settingsKey: 'busStop' },
+  { mode: 'tram', label: 'Tram', icon: '🚊', settingsKey: 'tramStops' },
+  { mode: 'train', label: 'Train', icon: '🚆', settingsKey: 'trainStops' },
+  { mode: 'bus', label: 'Bus', icon: '🚌', settingsKey: 'busStops' },
 ];
 
-function StopSelector({
+function StopListManager({
   mode,
   label,
   icon,
-  config,
+  stops,
   nearbyStop,
-  onChange,
+  onAddStop,
+  onRemoveStop,
+  onToggleEnabled,
 }: {
   mode: TransportMode;
   label: string;
   icon: string;
-  config?: StopConfig;
+  stops: StopConfig[];
   nearbyStop?: Stop & { distance: number };
-  onChange: (config: StopConfig | undefined) => void;
+  onAddStop: (config: StopConfig) => void;
+  onRemoveStop: (stopId: string) => void;
+  onToggleEnabled: (stopId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Stop[]>([]);
@@ -74,14 +80,16 @@ function StopSelector({
       const response = await fetch(`/api/stops?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setSearchResults(data.stops.slice(0, 5));
+        // Filter out already-added stops
+        const existingIds = new Set(stops.map(s => s.stop.id));
+        setSearchResults(data.stops.filter((s: Stop) => !existingIds.has(s.id)).slice(0, 5));
       }
     } catch (error) {
       console.error('Search failed:', error);
     } finally {
       setIsSearching(false);
     }
-  }, [mode]);
+  }, [mode, stops]);
 
   // Debounced search
   useEffect(() => {
@@ -97,7 +105,7 @@ function StopSelector({
   }, [searchQuery, searchStops]);
 
   const selectStop = (stop: Stop) => {
-    onChange({ stop, enabled: true });
+    onAddStop({ stop, enabled: true });
     setShowSearch(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -105,116 +113,118 @@ function StopSelector({
 
   const useNearbyStop = () => {
     if (nearbyStop) {
-      const { distance, ...stop } = nearbyStop;
-      onChange({ stop, enabled: true });
+      // Extract just the Stop properties without distance
+      const stop: Stop = {
+        id: nearbyStop.id,
+        name: nearbyStop.name,
+        modes: nearbyStop.modes,
+        ...(nearbyStop.code && { code: nearbyStop.code }),
+        ...(nearbyStop.location && { location: nearbyStop.location }),
+        ...(nearbyStop.directions && { directions: nearbyStop.directions }),
+      };
+      onAddStop({ stop, enabled: true });
     }
   };
 
-  const clearStop = () => {
-    onChange(undefined);
-  };
-
-  const toggleEnabled = () => {
-    if (config) {
-      onChange({ ...config, enabled: !config.enabled });
-    }
-  };
+  const hasNearbyNotAdded = nearbyStop && !stops.some(s => s.stop.id === nearbyStop.id);
 
   return (
     <div className="border-b border-black py-3">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xl">{icon}</span>
         <span className="font-bold">{label}</span>
-        {config && (
-          <label className="ml-auto flex items-center gap-1 text-sm">
-            <input
-              type="checkbox"
-              checked={config.enabled}
-              onChange={toggleEnabled}
-              className="w-4 h-4"
-            />
-            Show
-          </label>
-        )}
+        <span className="text-xs text-gray-600 ml-auto">
+          {stops.length} stop{stops.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      {config ? (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="flex-1 truncate">{config.stop.name}</span>
-          <button
-            onClick={() => setShowSearch(true)}
-            className="px-2 py-1 border border-black text-xs"
-          >
-            Change
-          </button>
-          <button
-            onClick={clearStop}
-            className="px-2 py-1 border border-black text-xs"
-          >
-            ✕
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {nearbyStop && !showSearch && (
-            <button
-              onClick={useNearbyStop}
-              className="w-full text-left p-2 border border-black text-sm hover:bg-gray-100"
-            >
-              <div className="font-medium">{nearbyStop.name}</div>
-              <div className="text-xs text-gray-600">
-                {Math.round(nearbyStop.distance)}m away (detected)
-              </div>
-            </button>
-          )}
-
-          {showSearch ? (
-            <div>
+      {/* List of configured stops */}
+      {stops.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {stops.map((config) => (
+            <div key={config.stop.id} className="flex items-center gap-2 text-sm py-1">
               <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()} stops...`}
-                className="w-full p-2 border-2 border-black text-sm"
-                autoFocus
+                type="checkbox"
+                checked={config.enabled}
+                onChange={() => onToggleEnabled(config.stop.id)}
+                className="w-4 h-4 flex-shrink-0"
               />
-              {isSearching && (
-                <div className="text-xs text-center py-2">Searching...</div>
-              )}
-              {searchResults.length > 0 && (
-                <div className="border border-black mt-1">
-                  {searchResults.map((stop) => (
-                    <button
-                      key={stop.id}
-                      onClick={() => selectStop(stop)}
-                      className="w-full text-left p-2 border-b border-black last:border-b-0 text-sm hover:bg-gray-100"
-                    >
-                      {stop.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <span className={`flex-1 truncate ${!config.enabled ? 'opacity-50' : ''}`}>
+                {config.stop.name}
+              </span>
               <button
-                onClick={() => {
-                  setShowSearch(false);
-                  setSearchQuery('');
-                  setSearchResults([]);
-                }}
-                className="text-xs underline mt-1"
+                onClick={() => onRemoveStop(config.stop.id)}
+                className="px-2 py-0.5 border border-black text-xs hover:bg-gray-100"
+                title="Remove stop"
               >
-                Cancel
+                ✕
               </button>
             </div>
-          ) : (
-            <button
-              onClick={() => setShowSearch(true)}
-              className="text-sm underline"
-            >
-              Search for a stop
-            </button>
-          )}
+          ))}
         </div>
       )}
+
+      {/* Add stop section */}
+      <div className="space-y-2">
+        {/* Show nearby stop suggestion if no stops added yet */}
+        {stops.length === 0 && hasNearbyNotAdded && !showSearch && (
+          <button
+            onClick={useNearbyStop}
+            className="w-full text-left p-2 border border-black text-sm hover:bg-gray-100"
+          >
+            <div className="font-medium">{nearbyStop!.name}</div>
+            <div className="text-xs text-gray-600">
+              {Math.round(nearbyStop!.distance)}m away (detected)
+            </div>
+          </button>
+        )}
+
+        {showSearch ? (
+          <div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`Search ${label.toLowerCase()} stops...`}
+              className="w-full p-2 border-2 border-black text-sm"
+              autoFocus
+            />
+            {isSearching && (
+              <div className="text-xs text-center py-2">Searching...</div>
+            )}
+            {searchResults.length > 0 && (
+              <div className="border border-black mt-1">
+                {searchResults.map((stop) => (
+                  <button
+                    key={stop.id}
+                    onClick={() => selectStop(stop)}
+                    className="w-full text-left p-2 border-b border-black last:border-b-0 text-sm hover:bg-gray-100"
+                  >
+                    {stop.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setShowSearch(false);
+                setSearchQuery('');
+                setSearchResults([]);
+              }}
+              className="text-xs underline mt-1"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowSearch(true)}
+            className="text-sm underline"
+          >
+            + Add a stop
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -229,15 +239,26 @@ export function SettingsModal({
 }: SettingsModalProps) {
   if (!isOpen) return null;
 
-  const handleStopChange = (mode: TransportMode, config: StopConfig | undefined) => {
-    const newSettings = setStopForMode(settings, mode, config);
+  const handleAddStop = (mode: TransportMode, config: StopConfig) => {
+    const newSettings = addStopForMode(settings, mode, config);
+    onSettingsChange(newSettings);
+  };
+
+  const handleRemoveStop = (mode: TransportMode, stopId: string) => {
+    const newSettings = removeStopForMode(settings, mode, stopId);
+    onSettingsChange(newSettings);
+  };
+
+  const handleToggleEnabled = (mode: TransportMode, stopId: string) => {
+    const newSettings = toggleStopEnabled(settings, mode, stopId);
     onSettingsChange(newSettings);
   };
 
   // Find nearby stop for each mode
   const getNearbyForMode = (mode: TransportMode) => {
-    return nearbyStops.find((s) => s.stop.modes.includes(mode))
-      ? { ...nearbyStops.find((s) => s.stop.modes.includes(mode))!.stop, distance: nearbyStops.find((s) => s.stop.modes.includes(mode))!.distance }
+    const found = nearbyStops.find((s) => s.stop.modes.includes(mode));
+    return found
+      ? { ...found.stop, distance: found.distance }
       : undefined;
   };
 
@@ -275,15 +296,17 @@ export function SettingsModal({
             <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
               Your Stops
             </h3>
-            {MODE_CONFIG.map(({ mode, label, icon, settingsKey }) => (
-              <StopSelector
+            {MODE_CONFIG.map(({ mode, label, icon }) => (
+              <StopListManager
                 key={mode}
                 mode={mode}
                 label={label}
                 icon={icon}
-                config={settings[settingsKey]}
+                stops={getStopsForMode(settings, mode)}
                 nearbyStop={getNearbyForMode(mode)}
-                onChange={(config) => handleStopChange(mode, config)}
+                onAddStop={(config) => handleAddStop(mode, config)}
+                onRemoveStop={(stopId) => handleRemoveStop(mode, stopId)}
+                onToggleEnabled={(stopId) => handleToggleEnabled(mode, stopId)}
               />
             ))}
           </div>
@@ -296,7 +319,7 @@ export function SettingsModal({
 
             <div className="space-y-3">
               <label className="flex items-center justify-between">
-                <span className="text-sm">Departures per mode</span>
+                <span className="text-sm">Departures per stop</span>
                 <select
                   value={settings.departuresPerMode}
                   onChange={(e) =>
@@ -312,6 +335,26 @@ export function SettingsModal({
                   <option value={3}>3</option>
                   <option value={4}>4</option>
                   <option value={5}>5</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between">
+                <span className="text-sm">Show next</span>
+                <select
+                  value={settings.maxMinutes}
+                  onChange={(e) =>
+                    onSettingsChange({
+                      ...settings,
+                      maxMinutes: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="border border-black p-1 text-sm"
+                >
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={60}>1 hour</option>
+                  <option value={90}>1.5 hours</option>
+                  <option value={120}>2 hours</option>
                 </select>
               </label>
 

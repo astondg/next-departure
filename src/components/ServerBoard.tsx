@@ -15,16 +15,18 @@ interface StopConfig {
 }
 
 interface UserSettings {
-  tramStop?: StopConfig;
-  trainStop?: StopConfig;
-  busStop?: StopConfig;
+  tramStops?: StopConfig[];
+  trainStops?: StopConfig[];
+  busStops?: StopConfig[];
   refreshInterval: number;
   departuresPerMode: number;
+  maxMinutes: number;
   showAbsoluteTime: boolean;
 }
 
 interface ModeSection {
   mode: TransportMode;
+  stopId: string;
   stopName: string;
   departures: Departure[];
   isLoading: boolean;
@@ -232,12 +234,18 @@ function ModeSectionComponent({
   );
 }
 
-function getEnabledStops(settings: UserSettings) {
-  const stops: { mode: TransportMode }[] = [];
-  if (settings.tramStop?.enabled) stops.push({ mode: 'tram' });
-  if (settings.trainStop?.enabled) stops.push({ mode: 'train' });
-  if (settings.busStop?.enabled) stops.push({ mode: 'bus' });
-  return stops;
+function getEnabledStopIds(settings: UserSettings): Set<string> {
+  const stopIds = new Set<string>();
+  for (const config of settings.tramStops || []) {
+    if (config.enabled) stopIds.add(config.stop.id);
+  }
+  for (const config of settings.trainStops || []) {
+    if (config.enabled) stopIds.add(config.stop.id);
+  }
+  for (const config of settings.busStops || []) {
+    if (config.enabled) stopIds.add(config.stop.id);
+  }
+  return stopIds;
 }
 
 export function ServerBoard({
@@ -245,8 +253,8 @@ export function ServerBoard({
   settings,
 }: ServerBoardProps) {
   const currentTime = new Date();
-  const enabledStops = getEnabledStops(settings);
-  const hasConfiguredStops = enabledStops.length > 0;
+  const enabledStopIds = getEnabledStopIds(settings);
+  const hasConfiguredStops = enabledStopIds.size > 0;
 
   return (
     <div
@@ -293,12 +301,12 @@ export function ServerBoard({
             </a>
           </div>
         ) : (
-          /* Show departures for each mode */
+          /* Show departures for each stop */
           sections
-            .filter((s) => enabledStops.some((es) => es.mode === s.mode))
+            .filter((s) => enabledStopIds.has(s.stopId))
             .map((section) => (
               <ModeSectionComponent
-                key={section.mode}
+                key={`${section.mode}-${section.stopId}`}
                 section={section}
                 showAbsoluteTime={settings.showAbsoluteTime}
                 departuresPerMode={settings.departuresPerMode}

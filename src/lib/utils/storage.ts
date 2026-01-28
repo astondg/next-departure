@@ -17,19 +17,30 @@ export interface StopConfig {
 }
 
 /**
+ * Legacy user settings (for migration)
+ */
+interface LegacyUserSettings {
+  tramStop?: StopConfig;
+  trainStop?: StopConfig;
+  busStop?: StopConfig;
+}
+
+/**
  * User settings stored locally
  */
 export interface UserSettings {
-  /** Configured stop for trams */
-  tramStop?: StopConfig;
-  /** Configured stop for trains */
-  trainStop?: StopConfig;
-  /** Configured stop for buses */
-  busStop?: StopConfig;
+  /** Configured stops for trams (array for multi-stop support) */
+  tramStops?: StopConfig[];
+  /** Configured stops for trains (array for multi-stop support) */
+  trainStops?: StopConfig[];
+  /** Configured stops for buses (array for multi-stop support) */
+  busStops?: StopConfig[];
   /** Refresh interval in seconds */
   refreshInterval: number;
   /** Maximum departures per mode */
   departuresPerMode: number;
+  /** Maximum minutes to look ahead for departures */
+  maxMinutes: number;
   /** Whether to show absolute times instead of relative */
   showAbsoluteTime: boolean;
   /** User's last known location (for auto-detection) */
@@ -43,7 +54,8 @@ export interface UserSettings {
 const SETTINGS_KEY = 'next-departure-settings';
 export const DEFAULT_SETTINGS: UserSettings = {
   refreshInterval: DEFAULT_REFRESH_INTERVAL,
-  departuresPerMode: 2,
+  departuresPerMode: 3,
+  maxMinutes: 30,
   showAbsoluteTime: false,
 };
 
@@ -102,6 +114,49 @@ function deleteCookie(name: string): void {
 }
 
 /**
+ * Migrate old single-stop format to new multi-stop format
+ */
+function migrateSettings(stored: UserSettings & LegacyUserSettings): UserSettings {
+  const migrated = { ...stored };
+  let needsSave = false;
+
+  // Migrate tramStop -> tramStops
+  if ('tramStop' in stored && stored.tramStop && !stored.tramStops) {
+    migrated.tramStops = [stored.tramStop];
+    delete (migrated as LegacyUserSettings).tramStop;
+    needsSave = true;
+  }
+
+  // Migrate trainStop -> trainStops
+  if ('trainStop' in stored && stored.trainStop && !stored.trainStops) {
+    migrated.trainStops = [stored.trainStop];
+    delete (migrated as LegacyUserSettings).trainStop;
+    needsSave = true;
+  }
+
+  // Migrate busStop -> busStops
+  if ('busStop' in stored && stored.busStop && !stored.busStops) {
+    migrated.busStops = [stored.busStop];
+    delete (migrated as LegacyUserSettings).busStop;
+    needsSave = true;
+  }
+
+  // Apply new defaults for missing maxMinutes
+  if (migrated.maxMinutes === undefined) {
+    migrated.maxMinutes = DEFAULT_SETTINGS.maxMinutes;
+    needsSave = true;
+  }
+
+  // Save migrated settings if changes were made
+  if (needsSave && typeof window !== 'undefined') {
+    // Defer save to avoid issues during load
+    setTimeout(() => saveSettings(migrated), 0);
+  }
+
+  return migrated;
+}
+
+/**
  * Load settings from storage
  * Tries localStorage first, falls back to cookies for older browsers
  */
@@ -115,14 +170,16 @@ export function loadSettings(): UserSettings {
     if (isLocalStorageAvailable()) {
       const stored = localStorage.getItem(SETTINGS_KEY);
       if (stored) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        return migrateSettings({ ...DEFAULT_SETTINGS, ...parsed });
       }
     }
 
     // Fall back to cookies
     const cookieData = getCookie(SETTINGS_KEY);
     if (cookieData) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(cookieData) };
+      const parsed = JSON.parse(cookieData);
+      return migrateSettings({ ...DEFAULT_SETTINGS, ...parsed });
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
@@ -141,7 +198,7 @@ export function saveSettings(settings: UserSettings): void {
   }
 
   // Don't save lastLocation to reduce storage size
-  const { lastLocation, ...settingsToSave } = settings;
+  const { lastLocation: _lastLocation, ...settingsToSave } = settings;
 
   try {
     const json = JSON.stringify(settingsToSave);
@@ -177,58 +234,107 @@ export function clearSettings(): void {
 }
 
 /**
- * Get the stop config for a specific mode
+ * Get stops for a specific mode (array)
  */
-export function getStopForMode(
+export function getStopsForMode(
   settings: UserSettings,
   mode: TransportMode
-): StopConfig | undefined {
+): StopConfig[] {
   switch (mode) {
     case 'tram':
-      return settings.tramStop;
+      return settings.tramStops || [];
     case 'train':
-      return settings.trainStop;
+      return settings.trainStops || [];
     case 'bus':
-      return settings.busStop;
+      return settings.busStops || [];
     default:
-      return undefined;
+      return [];
   }
 }
 
 /**
- * Set the stop config for a specific mode
+ * Set stops for a specific mode (array)
  */
-export function setStopForMode(
+export function setStopsForMode(
   settings: UserSettings,
   mode: TransportMode,
-  config: StopConfig | undefined
+  configs: StopConfig[]
 ): UserSettings {
   switch (mode) {
     case 'tram':
-      return { ...settings, tramStop: config };
+      return { ...settings, tramStops: configs };
     case 'train':
-      return { ...settings, trainStop: config };
+      return { ...settings, trainStops: configs };
     case 'bus':
-      return { ...settings, busStop: config };
+      return { ...settings, busStops: configs };
     default:
       return settings;
   }
 }
 
 /**
- * Get all enabled stops
+ * Add a stop for a specific mode
+ */
+export function addStopForMode(
+  settings: UserSettings,
+  mode: TransportMode,
+  config: StopConfig
+): UserSettings {
+  const existing = getStopsForMode(settings, mode);
+  // Don't add if stop already exists
+  if (existing.some(s => s.stop.id === config.stop.id)) {
+    return settings;
+  }
+  return setStopsForMode(settings, mode, [...existing, config]);
+}
+
+/**
+ * Remove a stop for a specific mode
+ */
+export function removeStopForMode(
+  settings: UserSettings,
+  mode: TransportMode,
+  stopId: string
+): UserSettings {
+  const existing = getStopsForMode(settings, mode);
+  return setStopsForMode(settings, mode, existing.filter(s => s.stop.id !== stopId));
+}
+
+/**
+ * Toggle a stop's enabled state
+ */
+export function toggleStopEnabled(
+  settings: UserSettings,
+  mode: TransportMode,
+  stopId: string
+): UserSettings {
+  const existing = getStopsForMode(settings, mode);
+  const updated = existing.map(s =>
+    s.stop.id === stopId ? { ...s, enabled: !s.enabled } : s
+  );
+  return setStopsForMode(settings, mode, updated);
+}
+
+/**
+ * Get all enabled stops across all modes
  */
 export function getEnabledStops(settings: UserSettings): { mode: TransportMode; stop: Stop }[] {
   const stops: { mode: TransportMode; stop: Stop }[] = [];
 
-  if (settings.tramStop?.enabled) {
-    stops.push({ mode: 'tram', stop: settings.tramStop.stop });
+  for (const config of settings.tramStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'tram', stop: config.stop });
+    }
   }
-  if (settings.trainStop?.enabled) {
-    stops.push({ mode: 'train', stop: settings.trainStop.stop });
+  for (const config of settings.trainStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'train', stop: config.stop });
+    }
   }
-  if (settings.busStop?.enabled) {
-    stops.push({ mode: 'bus', stop: settings.busStop.stop });
+  for (const config of settings.busStops || []) {
+    if (config.enabled) {
+      stops.push({ mode: 'bus', stop: config.stop });
+    }
   }
 
   return stops;

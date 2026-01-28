@@ -14,6 +14,7 @@ import { GearIcon } from './GearIcon';
 
 interface ModeSection {
   mode: TransportMode;
+  stopId: string;
   stopName: string;
   departures: Departure[];
   isLoading: boolean;
@@ -221,16 +222,14 @@ export function CombinedBoard({
             </button>
           </div>
         ) : (
-          /* Show departures for each mode */
+          /* Show departures for each stop */
           sections
             .filter((s) =>
-              enabledStops.some(
-                (es) => es.mode === s.mode && es.stop.id === s.departures[0]?.id?.split('-')[0]
-              ) || enabledStops.some((es) => es.mode === s.mode)
+              enabledStops.some((es) => es.stop.id === s.stopId)
             )
             .map((section) => (
               <ModeSection
-                key={section.mode}
+                key={`${section.mode}-${section.stopId}`}
                 section={section}
                 showAbsoluteTime={settings.showAbsoluteTime}
                 departuresPerMode={settings.departuresPerMode}

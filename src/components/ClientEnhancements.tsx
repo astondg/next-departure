@@ -27,6 +27,7 @@ import { SettingsModal } from './SettingsModal';
 
 interface ModeSection {
   mode: TransportMode;
+  stopId: string;
   stopName: string;
   departures: Departure[];
   isLoading: boolean;
@@ -135,6 +136,7 @@ export function ClientEnhancements({
           stopId: stop.id,
           mode,
           limit: String(settings.departuresPerMode + 2),
+          maxMinutes: String(settings.maxMinutes),
         });
 
         const response = await fetch(`/api/departures?${params.toString()}`);
@@ -143,6 +145,7 @@ export function ClientEnhancements({
           const data = await response.json();
           newSections.push({
             mode,
+            stopId: stop.id,
             stopName: data.stop?.name || stop.name,
             departures: data.departures || [],
             isLoading: false,
@@ -150,6 +153,7 @@ export function ClientEnhancements({
         } else {
           newSections.push({
             mode,
+            stopId: stop.id,
             stopName: stop.name,
             departures: [],
             isLoading: false,
@@ -160,6 +164,7 @@ export function ClientEnhancements({
         console.error(`Error fetching ${mode} departures:`, error);
         newSections.push({
           mode,
+          stopId: stop.id,
           stopName: stop.name,
           departures: [],
           isLoading: false,
@@ -198,7 +203,8 @@ export function ClientEnhancements({
   useEffect(() => {
     if (!jsEnabled) return;
     fetchDepartures();
-  }, [jsEnabled, settings.tramStop, settings.trainStop, settings.busStop]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jsEnabled, JSON.stringify([settings.tramStops, settings.trainStops, settings.busStops])]);
 
   // Detect location
   useEffect(() => {
