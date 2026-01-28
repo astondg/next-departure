@@ -93,13 +93,26 @@ async function fetchStopDepartures(
       return {
         mode,
         stopId,
-        stopName: 'Error',
+        stopName: `${mode}:${stopId}`,
         departures: [],
-        error: 'API error',
+        error: response.status === 404
+          ? `Stop not found`
+          : `API error (${response.status})`,
       };
     }
 
     const result = await response.json();
+
+    // Check if stop data was returned
+    if (!result.stop?.name) {
+      return {
+        mode,
+        stopId,
+        stopName: `${mode}:${stopId}`,
+        departures: [],
+        error: 'Invalid stop ID',
+      };
+    }
 
     // Filter out departed services
     const now = new Date();
@@ -111,7 +124,7 @@ async function fetchStopDepartures(
     return {
       mode,
       stopId,
-      stopName: result.stop?.name || 'Unknown Stop',
+      stopName: result.stop.name,
       departures: upcoming.slice(0, limit),
     };
   } catch (error) {
@@ -119,9 +132,9 @@ async function fetchStopDepartures(
     return {
       mode,
       stopId,
-      stopName: 'Error',
+      stopName: `${mode}:${stopId}`,
       departures: [],
-      error: 'Failed to fetch',
+      error: 'Connection failed',
     };
   }
 }
@@ -193,17 +206,27 @@ export async function GET(request: NextRequest) {
   // Available height after padding and gaps
   const availableHeight = height - (padding * 2) - (sectionGap * totalGaps);
 
-  // Headers take ~40% of row height, departures take full row height
-  // Total "row units": headers count as 0.6, departures count as 1.0
+  // Headers take ~55% of row height, departures take full row height
+  // Total "row units": headers count as 0.55, departures count as 1.0
   const headerRatio = 0.55;
   const totalRowUnits = (totalHeaders * headerRatio) + totalDepartures;
-  const baseRowHeight = availableHeight / totalRowUnits;
+
+  // Calculate row height but cap it to reasonable maximums
+  // Max row height: 70px at scale 1 (prevents giant text with few rows)
+  // Min row height: 40px at scale 1 (ensures readability with many rows)
+  const maxRowHeight = 70 * scale;
+  const minRowHeight = 40 * scale;
+  const calculatedRowHeight = availableHeight / totalRowUnits;
+  const baseRowHeight = Math.min(Math.max(calculatedRowHeight, minRowHeight), maxRowHeight);
 
   const rowHeight = Math.round(baseRowHeight);
   const headerHeight = Math.round(baseRowHeight * headerRatio);
 
-  // Scale fonts proportionally to row height (base row height ~56px at scale 1)
-  const fontScale = (rowHeight / 56) * scale;
+  // Scale fonts proportionally to row height
+  // Base calculation uses unscaled reference (56px), then apply scale for resolution
+  // Cap the row-based multiplier to prevent giant text with few rows
+  const rowSizeMultiplier = Math.min(rowHeight / (56 * scale), 1.2);
+  const fontScale = rowSizeMultiplier * scale;
 
   const fontSize = {
     modeLabel: Math.round(18 * fontScale),
