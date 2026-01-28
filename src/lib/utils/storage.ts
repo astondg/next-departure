@@ -43,6 +43,8 @@ export interface UserSettings {
   maxMinutes: number;
   /** Whether to show absolute times instead of relative */
   showAbsoluteTime: boolean;
+  /** Whether to use nearby stops based on current location instead of configured stops */
+  nearbyMode: boolean;
   /** User's last known location (for auto-detection) */
   lastLocation?: {
     latitude: number;
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   departuresPerMode: 3,
   maxMinutes: 30,
   showAbsoluteTime: false,
+  nearbyMode: false,
 };
 
 /**

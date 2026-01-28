@@ -73,6 +73,7 @@ export function ClientEnhancements({
   // Refs
   const mountedRef = useRef(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLocationFetchRef = useRef<number>(0);
 
   // Enable JS features after hydration
   useEffect(() => {
@@ -118,18 +119,18 @@ export function ClientEnhancements({
     saveSettings(settings);
   }, [jsEnabled, settings]);
 
-  // Fetch departures
-  const fetchDepartures = useCallback(async () => {
-    const enabledStops = getEnabledStops(settings);
-
-    if (enabledStops.length === 0) {
+  // Fetch departures for a list of stops
+  const fetchDeparturesForStops = useCallback(async (
+    stops: { mode: TransportMode; stop: Stop }[]
+  ) => {
+    if (stops.length === 0) {
       setSections([]);
       return;
     }
 
     const newSections: ModeSection[] = [];
 
-    for (const { mode, stop } of enabledStops) {
+    for (const { mode, stop } of stops) {
       try {
         const params = new URLSearchParams({
           provider: 'ptv',
@@ -177,40 +178,34 @@ export function ClientEnhancements({
       setSections(newSections);
       setFetchedAt(new Date().toISOString());
     }
-  }, [settings]);
+  }, [settings.departuresPerMode, settings.maxMinutes]);
 
-  // Auto-refresh
-  useEffect(() => {
-    if (!jsEnabled) return;
-
-    const scheduleRefresh = () => {
-      refreshTimeoutRef.current = setTimeout(async () => {
-        await fetchDepartures();
-        scheduleRefresh();
-      }, settings.refreshInterval * 1000);
-    };
-
-    scheduleRefresh();
-
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
+  // Fetch departures based on current mode (home or nearby)
+  const fetchDepartures = useCallback(async () => {
+    if (settings.nearbyMode) {
+      // In nearby mode, use nearby stops
+      if (nearbyStops.length > 0) {
+        const stops = nearbyStops.map(ns => ({ mode: ns.mode, stop: ns.stop }));
+        await fetchDeparturesForStops(stops);
       }
-    };
-  }, [jsEnabled, settings.refreshInterval, fetchDepartures]);
+      // If no nearby stops yet, they'll be fetched by location detection
+    } else {
+      // In home mode, use configured stops
+      const enabledStops = getEnabledStops(settings);
+      await fetchDeparturesForStops(enabledStops);
+    }
+  }, [settings, nearbyStops, fetchDeparturesForStops]);
 
-  // Fetch when settings change
-  useEffect(() => {
-    if (!jsEnabled) return;
-    fetchDepartures();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jsEnabled, JSON.stringify([settings.tramStops, settings.trainStops, settings.busStops])]);
+  // Fetch nearby stops based on current location
+  const fetchNearbyStops = useCallback(async (clearExisting = true) => {
+    if (!navigator.geolocation) {
+      console.warn('Geolocation not available');
+      return;
+    }
 
-  // Detect location
-  useEffect(() => {
-    if (!jsEnabled) return;
-    if (!navigator.geolocation) return;
-
+    if (clearExisting) {
+      setNearbyStops([]);
+    }
     setIsLoadingNearby(true);
 
     navigator.geolocation.getCurrentPosition(
@@ -249,6 +244,7 @@ export function ClientEnhancements({
         if (mountedRef.current) {
           setNearbyStops(allNearby);
           setIsLoadingNearby(false);
+          lastLocationFetchRef.current = Date.now();
         }
       },
       (error) => {
@@ -258,10 +254,119 @@ export function ClientEnhancements({
       {
         enableHighAccuracy: false,
         timeout: 10000,
-        maximumAge: 300000,
+        maximumAge: 60000, // Cache location for 1 minute
       }
     );
-  }, [jsEnabled]);
+  }, []);
+
+  // Auto-refresh with visibility handling
+  useEffect(() => {
+    if (!jsEnabled) return;
+
+    let isVisible = !document.hidden;
+    let lastFetchTime = Date.now();
+    const LOCATION_STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+
+      refreshTimeoutRef.current = setTimeout(async () => {
+        if (isVisible) {
+          await fetchDepartures();
+          lastFetchTime = Date.now();
+        }
+        scheduleRefresh();
+      }, settings.refreshInterval * 1000);
+    };
+
+    // Handle page visibility changes (device lock, app background, tab switch)
+    const handleVisibilityChange = async () => {
+      isVisible = !document.hidden;
+
+      if (isVisible) {
+        // Page became visible - check if data is stale
+        const timeSinceLastFetch = Date.now() - lastFetchTime;
+        const isStale = timeSinceLastFetch > settings.refreshInterval * 1000;
+
+        // In nearby mode, also check if location is stale (user may have moved)
+        if (settings.nearbyMode) {
+          const timeSinceLocationFetch = Date.now() - lastLocationFetchRef.current;
+          if (timeSinceLocationFetch > LOCATION_STALE_THRESHOLD) {
+            // Location is stale, re-fetch nearby stops (which will trigger departure fetch)
+            fetchNearbyStops(false);
+          } else if (isStale) {
+            // Location is fresh but departures are stale
+            await fetchDepartures();
+            lastFetchTime = Date.now();
+          }
+        } else if (isStale) {
+          // Home mode - just refresh departures
+          await fetchDepartures();
+          lastFetchTime = Date.now();
+        }
+
+        // Restart the refresh timer
+        scheduleRefresh();
+      } else {
+        // Page is hidden - stop the timer to save battery
+        if (refreshTimeoutRef.current) {
+          clearTimeout(refreshTimeoutRef.current);
+          refreshTimeoutRef.current = null;
+        }
+      }
+    };
+
+    // Handle bfcache restoration (back-forward navigation)
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page was restored from bfcache - refresh data
+        handleVisibilityChange();
+      }
+    };
+
+    // Start polling
+    scheduleRefresh();
+
+    // Listen for visibility changes and bfcache
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, [jsEnabled, settings.refreshInterval, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
+
+  // Fetch when settings change (home mode)
+  useEffect(() => {
+    if (!jsEnabled) return;
+    if (settings.nearbyMode) return; // Handled by nearby mode effect
+    fetchDepartures();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jsEnabled, settings.nearbyMode, JSON.stringify([settings.tramStops, settings.trainStops, settings.busStops])]);
+
+  // Fetch when nearby stops are available (nearby mode)
+  useEffect(() => {
+    if (!jsEnabled) return;
+    if (!settings.nearbyMode) return;
+    if (nearbyStops.length === 0) return;
+
+    fetchDepartures();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jsEnabled, settings.nearbyMode, nearbyStops]);
+
+  // Detect location when nearby mode is enabled
+  useEffect(() => {
+    if (!jsEnabled) return;
+    if (!settings.nearbyMode) return;
+
+    fetchNearbyStops(true);
+  }, [jsEnabled, settings.nearbyMode, fetchNearbyStops]);
 
   // Handle settings change
   const handleSettingsChange = useCallback((newSettings: UserSettings) => {
@@ -282,6 +387,7 @@ export function ClientEnhancements({
         fetchedAt={fetchedAt}
         onSettingsClick={() => setIsSettingsOpen(true)}
         now={now}
+        isLoadingNearby={isLoadingNearby}
       />
 
       {/* Settings modal */}

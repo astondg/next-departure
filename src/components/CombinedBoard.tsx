@@ -8,7 +8,7 @@
  */
 
 import { Departure, TransportMode } from '@/lib/providers/types';
-import { formatDepartureTime, formatLastUpdated } from '@/lib/utils/time';
+import { formatDepartureTime } from '@/lib/utils/time';
 import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
 import { GearIcon } from './GearIcon';
 
@@ -27,6 +27,7 @@ interface CombinedBoardProps {
   fetchedAt: string;
   onSettingsClick: () => void;
   now?: Date;
+  isLoadingNearby?: boolean;
 }
 
 /**
@@ -175,39 +176,23 @@ export function CombinedBoard({
   fetchedAt,
   onSettingsClick,
   now = new Date(),
+  isLoadingNearby = false,
 }: CombinedBoardProps) {
   const enabledStops = getEnabledStops(settings);
   const hasConfiguredStops = enabledStops.length > 0;
+  const isNearbyMode = settings.nearbyMode;
+
+  // Determine what to show
+  const showWelcome = !isNearbyMode && !hasConfiguredStops;
+  const showNearbyLoading = isNearbyMode && isLoadingNearby && sections.length === 0;
+  const showNoNearbyStops = isNearbyMode && !isLoadingNearby && sections.length === 0;
+  const showSections = sections.length > 0;
 
   return (
     <div className="min-h-screen bg-white text-black font-sans flex flex-col">
-      {/* Header - minimal */}
-      <header className="flex items-center justify-between px-3 py-2 border-b-2 border-black">
-        <div>
-          <h1 className="text-lg font-bold">Next Departure</h1>
-          <p className="text-xs text-gray-600">
-            {formatLastUpdated(fetchedAt)}
-          </p>
-        </div>
-        <a
-          href="/settings"
-          onClick={(e) => {
-            // Use modal on JS-enabled browsers, link for fallback
-            if (typeof window !== 'undefined' && onSettingsClick) {
-              e.preventDefault();
-              onSettingsClick();
-            }
-          }}
-          className="p-2 hover:bg-gray-100 rounded"
-          title="Settings"
-        >
-          <GearIcon size={20} />
-        </a>
-      </header>
-
-      {/* Main content */}
-      <main className="flex-1 py-2">
-        {!hasConfiguredStops ? (
+      {/* Main content - no header, just departures */}
+      <main className="flex-1 pt-1">
+        {showWelcome && (
           /* No stops configured - show welcome */
           <div className="p-4 text-center">
             <p className="text-lg font-bold mb-2">Welcome!</p>
@@ -221,27 +206,85 @@ export function CombinedBoard({
               Configure Stops
             </button>
           </div>
-        ) : (
+        )}
+
+        {showNearbyLoading && (
+          /* Nearby mode - detecting location */
+          <div className="p-4 text-center">
+            <p className="text-lg font-bold mb-2">Detecting location...</p>
+            <p className="text-sm text-gray-600">
+              Finding nearby stops
+            </p>
+          </div>
+        )}
+
+        {showNoNearbyStops && (
+          /* Nearby mode - no stops found */
+          <div className="p-4 text-center">
+            <p className="text-lg font-bold mb-2">No nearby stops</p>
+            <p className="text-sm mb-4 text-gray-600">
+              Could not find transit stops near your location.
+            </p>
+            <button
+              onClick={onSettingsClick}
+              className="bg-black text-white px-4 py-2 font-bold"
+            >
+              Switch to Home Mode
+            </button>
+          </div>
+        )}
+
+        {showSections && (
           /* Show departures for each stop */
-          sections
-            .filter((s) =>
-              enabledStops.some((es) => es.stop.id === s.stopId)
-            )
-            .map((section) => (
-              <ModeSection
-                key={`${section.mode}-${section.stopId}`}
-                section={section}
-                showAbsoluteTime={settings.showAbsoluteTime}
-                departuresPerMode={settings.departuresPerMode}
-                now={now}
-              />
-            ))
+          <>
+            {isNearbyMode ? (
+              // In nearby mode, show all sections directly
+              sections.map((section) => (
+                <ModeSection
+                  key={`${section.mode}-${section.stopId}`}
+                  section={section}
+                  showAbsoluteTime={settings.showAbsoluteTime}
+                  departuresPerMode={settings.departuresPerMode}
+                  now={now}
+                />
+              ))
+            ) : (
+              // In home mode, filter to enabled stops
+              sections
+                .filter((s) =>
+                  enabledStops.some((es) => es.stop.id === s.stopId)
+                )
+                .map((section) => (
+                  <ModeSection
+                    key={`${section.mode}-${section.stopId}`}
+                    section={section}
+                    showAbsoluteTime={settings.showAbsoluteTime}
+                    departuresPerMode={settings.departuresPerMode}
+                    now={now}
+                  />
+                ))
+            )}
+          </>
         )}
       </main>
 
-      {/* Footer - minimal */}
-      <footer className="text-xs text-center py-1 border-t border-black text-gray-600">
-        Auto-refreshing every {settings.refreshInterval}s
+      {/* Footer - subtle branding + settings */}
+      <footer className="flex items-center justify-between px-4 py-2 border-t border-gray-300 text-gray-400 text-sm">
+        <span>Next Departure</span>
+        <a
+          href="/settings"
+          onClick={(e) => {
+            // Use modal on JS-enabled browsers, link for fallback
+            if (typeof window !== 'undefined' && onSettingsClick) {
+              e.preventDefault();
+              onSettingsClick();
+            }
+          }}
+          className="p-2 flex items-center text-gray-500 hover:text-gray-700"
+          title="Settings"
+        >
+          <GearIcon size={18} />
+        </a>
       </footer>
     </div>
   );

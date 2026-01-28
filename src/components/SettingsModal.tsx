@@ -291,25 +291,65 @@ export function SettingsModal({
             </div>
           )}
 
-          {/* Stop selectors */}
+          {/* Mode toggle */}
           <div className="mb-6">
             <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
-              Your Stops
+              Mode
             </h3>
-            {MODE_CONFIG.map(({ mode, label, icon }) => (
-              <StopListManager
-                key={mode}
-                mode={mode}
-                label={label}
-                icon={icon}
-                stops={getStopsForMode(settings, mode)}
-                nearbyStop={getNearbyForMode(mode)}
-                onAddStop={(config) => handleAddStop(mode, config)}
-                onRemoveStop={(stopId) => handleRemoveStop(mode, stopId)}
-                onToggleEnabled={(stopId) => handleToggleEnabled(mode, stopId)}
-              />
-            ))}
+            <div className="flex gap-2">
+              <button
+                onClick={() =>
+                  onSettingsChange({ ...settings, nearbyMode: false })
+                }
+                className={`flex-1 py-2 px-3 text-sm font-medium border-2 ${
+                  !settings.nearbyMode
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-black border-black hover:bg-gray-100'
+                }`}
+              >
+                Home
+              </button>
+              <button
+                onClick={() =>
+                  onSettingsChange({ ...settings, nearbyMode: true })
+                }
+                className={`flex-1 py-2 px-3 text-sm font-medium border-2 ${
+                  settings.nearbyMode
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-black border-black hover:bg-gray-100'
+                }`}
+              >
+                Nearby
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2">
+              {settings.nearbyMode
+                ? 'Showing stops near your current location'
+                : 'Showing your configured home stops'}
+            </p>
           </div>
+
+          {/* Stop selectors (only shown in Home mode) */}
+          {!settings.nearbyMode && (
+            <div className="mb-6">
+              <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
+                Your Stops
+              </h3>
+              {MODE_CONFIG.map(({ mode, label, icon }) => (
+                <StopListManager
+                  key={mode}
+                  mode={mode}
+                  label={label}
+                  icon={icon}
+                  stops={getStopsForMode(settings, mode)}
+                  nearbyStop={getNearbyForMode(mode)}
+                  onAddStop={(config) => handleAddStop(mode, config)}
+                  onRemoveStop={(stopId) => handleRemoveStop(mode, stopId)}
+                  onToggleEnabled={(stopId) => handleToggleEnabled(mode, stopId)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Other settings */}
           <div className="mb-6">
