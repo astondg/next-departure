@@ -109,7 +109,7 @@ async function removeStop(formData: FormData) {
   redirect('/settings');
 }
 
-async function searchStops(query: string): Promise<{ id: string; name: string }[]> {
+async function searchStops(query: string, mode: string): Promise<{ id: string; name: string }[]> {
   if (!query || query.length < 3) return [];
 
   try {
@@ -120,8 +120,9 @@ async function searchStops(query: string): Promise<{ id: string; name: string }[
     }
 
     const provider = getProvider('ptv');
-    // Don't filter by mode - search all modes and let user select from results
-    const stops = await provider.searchStops(query);
+    // Filter by mode to match client-side behavior
+    const transportMode = mode as 'tram' | 'train' | 'bus';
+    const stops = await provider.searchStops(query, transportMode);
     return stops.slice(0, 8).map((stop) => ({ id: stop.id, name: stop.name }));
   } catch (error) {
     console.error('Search failed:', error);
@@ -153,7 +154,7 @@ export default async function SettingsPage({
 
   let searchResults: { id: string; name: string }[] = [];
   if (searchMode && searchQuery && searchQuery.length >= 3) {
-    searchResults = await searchStops(searchQuery);
+    searchResults = await searchStops(searchQuery, searchMode);
   }
 
   const getStopConfig = (mode: string): StopConfig | undefined => {
