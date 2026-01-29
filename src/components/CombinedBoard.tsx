@@ -91,18 +91,27 @@ function CompactDepartureRow({
 
       {/* Time */}
       <div className="flex flex-col items-end flex-shrink-0 min-w-[70px]">
-        <span className={`text-xl font-bold ${isDeparting ? 'animate-pulse' : ''}`}>
-          {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
-        </span>
-        {timeInfo.isRealTime && (
-          <span className="text-xs">
-            {timeInfo.delayMinutes < -2
-              ? `${timeInfo.delayMinutes}` /* Early arrival: -3, -5, etc */
-              : timeInfo.delayMinutes > 2
-              ? `+${timeInfo.delayMinutes}` /* Late: +3, +5, etc */
-              : 'live' /* On time or minor variance */}
+        <div className="flex flex-col items-end">
+          <span className={`text-xl font-bold ${isDeparting ? 'animate-pulse' : ''}`}>
+            {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
           </span>
-        )}
+          {/* Data quality indicator bar */}
+          <div className="flex items-center gap-1 mt-0.5">
+            {timeInfo.isRealTime ? (
+              /* Live data: solid pulsing bar */
+              <span className="h-0.5 w-8 bg-black live-pulse rounded-full" />
+            ) : (
+              /* Scheduled only: dotted dim bar */
+              <span className="h-0.5 w-8 rounded-full scheduled-bar" />
+            )}
+            {/* Show delay info if significant (only for real-time) */}
+            {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
+              <span className="text-xs font-medium">
+                {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

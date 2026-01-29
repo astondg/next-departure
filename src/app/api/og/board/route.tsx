@@ -361,15 +361,6 @@ export async function GET(request: NextRequest) {
                   const isDeparting = timeInfo.display === 'now';
                   const isTrain = departure.mode === 'train';
 
-                  // Delay indicator text (compact for image)
-                  const delayText = timeInfo.isRealTime
-                    ? timeInfo.delayMinutes < -2
-                      ? `${timeInfo.delayMinutes}`
-                      : timeInfo.delayMinutes > 2
-                      ? `+${timeInfo.delayMinutes}`
-                      : '•' // Dot indicates live/on-time
-                    : '';
-
                   return (
                     <div
                       key={departure.id || depIndex}
@@ -430,7 +421,7 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
-                      {/* Time with delay indicator */}
+                      {/* Time with data quality indicator */}
                       <div
                         style={{
                           display: 'flex',
@@ -448,17 +439,60 @@ export async function GET(request: NextRequest) {
                         >
                           {timeInfo.display}
                         </span>
-                        {delayText && (
-                          <span
-                            style={{
-                              fontSize: `${Math.round(12 * fontScale)}px`,
-                              fontWeight: 400,
-                              opacity: 0.7,
-                            }}
-                          >
-                            {delayText}
-                          </span>
-                        )}
+                        {/* Data quality indicator bar */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: `${Math.round(4 * fontScale)}px`,
+                            marginTop: `${Math.round(2 * fontScale)}px`,
+                          }}
+                        >
+                          {timeInfo.isRealTime ? (
+                            /* Live data: solid bar */
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                width: `${Math.round(24 * fontScale)}px`,
+                                height: `${Math.round(2 * fontScale)}px`,
+                                backgroundColor: isDeparting ? '#ffffff' : '#000000',
+                                borderRadius: `${Math.round(1 * fontScale)}px`,
+                              }}
+                            />
+                          ) : (
+                            /* Scheduled only: dotted bar (3 segments) */
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: `${Math.round(2 * fontScale)}px`,
+                              }}
+                            >
+                              {[0, 1, 2].map((i) => (
+                                <span
+                                  key={i}
+                                  style={{
+                                    display: 'inline-block',
+                                    width: `${Math.round(6 * fontScale)}px`,
+                                    height: `${Math.round(2 * fontScale)}px`,
+                                    backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
+                                    borderRadius: `${Math.round(1 * fontScale)}px`,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {/* Show delay info if significant (only for real-time) */}
+                          {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
+                            <span
+                              style={{
+                                fontSize: `${Math.round(12 * fontScale)}px`,
+                                fontWeight: 500,
+                              }}
+                            >
+                              {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

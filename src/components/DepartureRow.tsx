@@ -83,15 +83,23 @@ export function DepartureRow({
           {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
         </span>
 
-        {/* Real-time indicator */}
-        {timeInfo.isRealTime && !isCancelled && (
-          <span className="text-xs uppercase tracking-wider">
-            {timeInfo.delayMinutes < -2
-              ? `${timeInfo.delayMinutes}`
-              : isDelayed
-              ? `+${timeInfo.delayMinutes}`
-              : 'live'}
-          </span>
+        {/* Data quality indicator bar */}
+        {!isCancelled && (
+          <div className="flex items-center gap-1 mt-0.5">
+            {timeInfo.isRealTime ? (
+              /* Live data: solid pulsing bar */
+              <span className="h-0.5 w-8 bg-current live-pulse rounded-full" />
+            ) : (
+              /* Scheduled only: dotted dim bar */
+              <span className="h-0.5 w-8 rounded-full scheduled-bar" />
+            )}
+            {/* Show delay info if significant (only for real-time) */}
+            {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
+              <span className="text-xs font-medium">
+                {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>

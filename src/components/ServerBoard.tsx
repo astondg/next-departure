@@ -144,15 +144,40 @@ function CompactDepartureRow({
         >
           {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
         </span>
-        {timeInfo.isRealTime && (
-          <span style={{ fontSize: '0.875rem', opacity: 0.7 }}>
-            {timeInfo.delayMinutes < -2
-              ? `${timeInfo.delayMinutes} early`
-              : timeInfo.delayMinutes > 2
-              ? `+${timeInfo.delayMinutes} late`
-              : 'live'}
-          </span>
-        )}
+        {/* Data quality indicator bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+          {timeInfo.isRealTime ? (
+            /* Live data: solid bar */
+            <span
+              style={{
+                display: 'inline-block',
+                width: '32px',
+                height: '2px',
+                backgroundColor: isDeparting ? '#fff' : '#000',
+                borderRadius: '1px',
+              }}
+            />
+          ) : (
+            /* Scheduled only: dotted bar */
+            <span
+              style={{
+                display: 'inline-block',
+                width: '32px',
+                height: '2px',
+                borderRadius: '1px',
+                background: isDeparting
+                  ? 'repeating-linear-gradient(90deg, rgba(255,255,255,0.5) 0px, rgba(255,255,255,0.5) 3px, transparent 3px, transparent 5px)'
+                  : 'repeating-linear-gradient(90deg, rgba(0,0,0,0.3) 0px, rgba(0,0,0,0.3) 3px, transparent 3px, transparent 5px)',
+              }}
+            />
+          )}
+          {/* Show delay info if significant (only for real-time) */}
+          {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
+            <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>
+              {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
