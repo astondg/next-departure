@@ -20,9 +20,12 @@ import {
   loadSettings,
   saveSettings,
   getEnabledStops,
+  getSupportedModes,
+  setActiveProvider,
   DEFAULT_SETTINGS,
   EnabledStopInfo,
 } from '@/lib/utils/storage';
+import { ProviderId } from '@/lib/providers';
 import { CombinedBoard } from './CombinedBoard';
 import { SettingsModal } from './SettingsModal';
 
@@ -146,7 +149,7 @@ export function ClientEnhancements({
           : (settings.departuresPerMode + 2) * 3; // Enough after filtering
 
         const params = new URLSearchParams({
-          provider: 'ptv',
+          provider: settings.activeProvider,
           stopId: stop.id,
           mode,
           limit: String(fetchLimit),
@@ -202,7 +205,7 @@ export function ClientEnhancements({
       setSections(newSections);
       setFetchedAt(new Date().toISOString());
     }
-  }, [settings.departuresPerMode, settings.maxMinutes]);
+  }, [settings.departuresPerMode, settings.maxMinutes, settings.activeProvider]);
 
   // Fetch departures based on current mode (home or nearby)
   const fetchDepartures = useCallback(async () => {
@@ -241,14 +244,14 @@ export function ClientEnhancements({
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        const modes: TransportMode[] = ['tram', 'train', 'bus'];
+        const modes = getSupportedModes(settings.activeProvider);
 
         // Fetch all modes in parallel
         const results = await Promise.all(
           modes.map(async (mode): Promise<NearbyStop[]> => {
             try {
               const params = new URLSearchParams({
-                provider: 'ptv',
+                provider: settings.activeProvider,
                 lat: String(latitude),
                 lon: String(longitude),
                 mode,
@@ -384,7 +387,7 @@ export function ClientEnhancements({
     if (settings.nearbyMode) return; // Handled by nearby mode effect
     fetchDepartures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jsEnabled, settings.nearbyMode, JSON.stringify([settings.tramStops, settings.trainStops, settings.busStops])]);
+  }, [jsEnabled, settings.nearbyMode, settings.activeProvider, JSON.stringify(settings.providers)]);
 
   // Fetch when nearby stops are available (nearby mode)
   useEffect(() => {
@@ -409,6 +412,13 @@ export function ClientEnhancements({
     setSettings(newSettings);
   }, []);
 
+  // Handle provider change
+  const handleProviderChange = useCallback((providerId: ProviderId) => {
+    const newSettings = setActiveProvider(settings, providerId);
+    setSettings(newSettings);
+    saveSettings(newSettings);
+  }, [settings]);
+
   // Don't render anything until JS is confirmed working
   if (!jsEnabled) {
     return null;
@@ -422,6 +432,7 @@ export function ClientEnhancements({
         settings={settings}
         fetchedAt={fetchedAt}
         onSettingsClick={() => setIsSettingsOpen(true)}
+        onProviderChange={handleProviderChange}
         now={now}
         isLoadingNearby={isLoadingNearby}
       />

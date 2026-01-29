@@ -17,8 +17,11 @@ import {
   removeStopForMode,
   toggleStopEnabled,
   updateStopDirections,
+  getSupportedModes,
+  setActiveProvider,
 } from '@/lib/utils/storage';
 import { TransportIcon, getModeLabel } from './TransportIcon';
+import { ProviderId, PROVIDER_INFO, listProviders, isProviderAvailable } from '@/lib/providers';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,15 +32,16 @@ interface SettingsModalProps {
   isLoadingNearby?: boolean;
 }
 
-const MODE_CONFIG: {
-  mode: TransportMode;
-  label: string;
-  settingsKey: 'tramStops' | 'trainStops' | 'busStops';
-}[] = [
-  { mode: 'tram', label: 'Tram', settingsKey: 'tramStops' },
-  { mode: 'train', label: 'Train', settingsKey: 'trainStops' },
-  { mode: 'bus', label: 'Bus', settingsKey: 'busStops' },
-];
+/**
+ * Get the mode config for the current provider
+ */
+function getModeConfigForProvider(providerId: ProviderId): { mode: TransportMode; label: string }[] {
+  const modes = getSupportedModes(providerId);
+  return modes.map(mode => ({
+    mode,
+    label: getModeLabel(mode),
+  }));
+}
 
 /**
  * Direction picker component for configuring which directions to show
@@ -45,11 +49,13 @@ const MODE_CONFIG: {
 function DirectionPicker({
   config,
   mode,
+  activeProvider,
   onUpdateDirections,
   onClose,
 }: {
   config: StopConfig;
   mode: TransportMode;
+  activeProvider: ProviderId;
   onUpdateDirections: (directionIds: string[] | undefined, directionNames: Record<string, string>) => void;
   onClose: () => void;
 }) {
@@ -66,7 +72,7 @@ function DirectionPicker({
       setIsLoading(true);
       try {
         const params = new URLSearchParams({
-          provider: 'ptv',
+          provider: activeProvider,
           stopId: config.stop.id,
           mode,
           limit: '50', // Get more departures to capture all directions
@@ -90,7 +96,7 @@ function DirectionPicker({
       }
     }
     fetchDirections();
-  }, [config.stop.id, mode]);
+  }, [config.stop.id, mode, activeProvider]);
 
   const toggleDirection = (dirId: string) => {
     const newSelected = new Set(selectedIds);
@@ -198,6 +204,7 @@ function StopListManager({
   label,
   stops,
   nearbyStop,
+  activeProvider,
   onAddStop,
   onRemoveStop,
   onToggleEnabled,
@@ -207,6 +214,7 @@ function StopListManager({
   label: string;
   stops: StopConfig[];
   nearbyStop?: Stop & { distance: number };
+  activeProvider: ProviderId;
   onAddStop: (config: StopConfig) => void;
   onRemoveStop: (stopId: string) => void;
   onToggleEnabled: (stopId: string) => void;
@@ -229,7 +237,7 @@ function StopListManager({
     setIsSearching(true);
     try {
       const params = new URLSearchParams({
-        provider: 'ptv',
+        provider: activeProvider,
         query,
         mode,
       });
@@ -245,7 +253,7 @@ function StopListManager({
     } finally {
       setIsSearching(false);
     }
-  }, [mode, stops]);
+  }, [mode, stops, activeProvider]);
 
   // Debounced search
   useEffect(() => {
@@ -333,6 +341,7 @@ function StopListManager({
                   <DirectionPicker
                     config={config}
                     mode={mode}
+                    activeProvider={activeProvider}
                     onUpdateDirections={(dirIds, dirNames) =>
                       onUpdateDirections(config.stop.id, dirIds, dirNames)
                     }
@@ -475,6 +484,42 @@ export function SettingsModal({
             </button>
           </div>
 
+          {/* Provider selector */}
+          {(() => {
+            const availableProviders = listProviders().filter(isProviderAvailable);
+            if (availableProviders.length > 1) {
+              return (
+                <div className="mb-6">
+                  <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
+                    Region
+                  </h3>
+                  <div className="flex gap-2 flex-wrap">
+                    {availableProviders.map((providerId) => (
+                      <button
+                        key={providerId}
+                        onClick={() => {
+                          const newSettings = setActiveProvider(settings, providerId);
+                          onSettingsChange(newSettings);
+                        }}
+                        className={`py-2 px-3 text-sm font-medium border-2 ${
+                          settings.activeProvider === providerId
+                            ? 'bg-black text-white border-black'
+                            : 'bg-white text-black border-black hover:bg-gray-100'
+                        }`}
+                      >
+                        {PROVIDER_INFO[providerId]?.region || providerId}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Switch between regions to configure different stops
+                  </p>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {/* Location status */}
           {isLoadingNearby && (
             <div className="text-sm text-center py-2 mb-4 bg-gray-100">
@@ -526,13 +571,14 @@ export function SettingsModal({
               <h3 className="font-bold mb-2 text-sm uppercase tracking-wider">
                 Your Stops
               </h3>
-              {MODE_CONFIG.map(({ mode, label }) => (
+              {getModeConfigForProvider(settings.activeProvider).map(({ mode, label }) => (
                 <StopListManager
                   key={mode}
                   mode={mode}
                   label={label}
                   stops={getStopsForMode(settings, mode)}
                   nearbyStop={getNearbyForMode(mode)}
+                  activeProvider={settings.activeProvider}
                   onAddStop={(config) => handleAddStop(mode, config)}
                   onRemoveStop={(stopId) => handleRemoveStop(mode, stopId)}
                   onToggleEnabled={(stopId) => handleToggleEnabled(mode, stopId)}

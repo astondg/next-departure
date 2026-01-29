@@ -6,6 +6,7 @@
  */
 
 import { Stop, TransportMode } from '@/lib/providers/types';
+import { ProviderId } from '@/lib/providers';
 import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
 
 /**
@@ -25,7 +26,7 @@ export interface StopConfig {
 }
 
 /**
- * Legacy user settings (for migration)
+ * Legacy user settings (for migration from single-stop format)
  */
 interface LegacyUserSettings {
   tramStop?: StopConfig;
@@ -34,15 +35,41 @@ interface LegacyUserSettings {
 }
 
 /**
+ * Legacy flat settings (for migration to per-provider format)
+ * This is the format before multi-provider support
+ */
+interface LegacyFlatSettings {
+  tramStops?: StopConfig[];
+  trainStops?: StopConfig[];
+  busStops?: StopConfig[];
+}
+
+/**
+ * Per-provider stop configurations
+ */
+export interface ProviderSettings {
+  /** Configured stops for trams (PTV only) */
+  tramStops?: StopConfig[];
+  /** Configured stops for trains */
+  trainStops?: StopConfig[];
+  /** Configured stops for buses */
+  busStops?: StopConfig[];
+  /** Configured stops for ferries (TfNSW only) */
+  ferryStops?: StopConfig[];
+  /** Configured stops for light rail (TfNSW only) */
+  lightRailStops?: StopConfig[];
+  /** Configured stops for coaches */
+  coachStops?: StopConfig[];
+}
+
+/**
  * User settings stored locally
  */
 export interface UserSettings {
-  /** Configured stops for trams (array for multi-stop support) */
-  tramStops?: StopConfig[];
-  /** Configured stops for trains (array for multi-stop support) */
-  trainStops?: StopConfig[];
-  /** Configured stops for buses (array for multi-stop support) */
-  busStops?: StopConfig[];
+  /** Currently active provider */
+  activeProvider: ProviderId;
+  /** Per-provider stop configurations */
+  providers: Partial<Record<ProviderId, ProviderSettings>>;
   /** Refresh interval in seconds */
   refreshInterval: number;
   /** Maximum departures per mode */
@@ -65,6 +92,8 @@ export interface UserSettings {
 
 const SETTINGS_KEY = 'next-departure-settings';
 export const DEFAULT_SETTINGS: UserSettings = {
+  activeProvider: 'ptv',
+  providers: {},
   refreshInterval: DEFAULT_REFRESH_INTERVAL,
   departuresPerMode: 3,
   maxMinutes: 30,
@@ -72,6 +101,34 @@ export const DEFAULT_SETTINGS: UserSettings = {
   nearbyMode: false,
   nearbyStopsPerMode: 1,
 };
+
+/**
+ * Detect default provider based on geographic coordinates
+ * Victoria (Melbourne area) → ptv
+ * NSW (Sydney area) → tfnsw
+ */
+export function detectProviderFromLocation(latitude: number, longitude: number): ProviderId {
+  // Victoria: roughly lat -39 to -34, lng 141 to 150
+  // NSW: roughly lat -37 to -28, lng 141 to 154
+  // Melbourne: -37.8, 144.9
+  // Sydney: -33.9, 151.2
+
+  // Use simple distance-based detection to major cities
+  const melbourneDistance = Math.sqrt(
+    Math.pow(latitude - (-37.8136), 2) + Math.pow(longitude - 144.9631, 2)
+  );
+  const sydneyDistance = Math.sqrt(
+    Math.pow(latitude - (-33.8688), 2) + Math.pow(longitude - 151.2093, 2)
+  );
+
+  // If closer to Sydney and within NSW bounds, use TfNSW
+  if (sydneyDistance < melbourneDistance && latitude > -38 && latitude < -28 && longitude > 148) {
+    return 'tfnsw';
+  }
+
+  // Default to PTV
+  return 'ptv';
+}
 
 /**
  * Check if localStorage is available
@@ -128,34 +185,72 @@ function deleteCookie(name: string): void {
 }
 
 /**
- * Migrate old single-stop format to new multi-stop format
+ * Migrate old settings formats to current multi-provider format
+ * Handles:
+ * 1. Single-stop format (tramStop → tramStops)
+ * 2. Flat multi-stop format (tramStops at top level → providers.ptv.tramStops)
  */
-function migrateSettings(stored: UserSettings & LegacyUserSettings): UserSettings {
-  const migrated = { ...stored };
+function migrateSettings(stored: UserSettings & LegacyUserSettings & LegacyFlatSettings): UserSettings {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const migrated: any = { ...stored };
   let needsSave = false;
 
-  // Migrate tramStop -> tramStops
-  if ('tramStop' in stored && stored.tramStop && !stored.tramStops) {
-    migrated.tramStops = [stored.tramStop];
-    delete (migrated as LegacyUserSettings).tramStop;
+  // Step 1: Migrate single-stop to multi-stop (very old format)
+  if ('tramStop' in stored && stored.tramStop) {
+    migrated.tramStops = migrated.tramStops || [];
+    migrated.tramStops.push(stored.tramStop);
+    delete migrated.tramStop;
+    needsSave = true;
+  }
+  if ('trainStop' in stored && stored.trainStop) {
+    migrated.trainStops = migrated.trainStops || [];
+    migrated.trainStops.push(stored.trainStop);
+    delete migrated.trainStop;
+    needsSave = true;
+  }
+  if ('busStop' in stored && stored.busStop) {
+    migrated.busStops = migrated.busStops || [];
+    migrated.busStops.push(stored.busStop);
+    delete migrated.busStop;
     needsSave = true;
   }
 
-  // Migrate trainStop -> trainStops
-  if ('trainStop' in stored && stored.trainStop && !stored.trainStops) {
-    migrated.trainStops = [stored.trainStop];
-    delete (migrated as LegacyUserSettings).trainStop;
+  // Step 2: Migrate flat format to per-provider format
+  // Check if we have top-level stop arrays but no providers object
+  const hasLegacyStops = 'tramStops' in migrated || 'trainStops' in migrated || 'busStops' in migrated;
+  const hasProviders = 'providers' in migrated && typeof migrated.providers === 'object';
+
+  if (hasLegacyStops && !hasProviders) {
+    // Move existing stops to providers.ptv (they were all PTV before)
+    const ptvSettings: ProviderSettings = {};
+
+    if (migrated.tramStops?.length > 0) {
+      ptvSettings.tramStops = migrated.tramStops;
+      delete migrated.tramStops;
+    }
+    if (migrated.trainStops?.length > 0) {
+      ptvSettings.trainStops = migrated.trainStops;
+      delete migrated.trainStops;
+    }
+    if (migrated.busStops?.length > 0) {
+      ptvSettings.busStops = migrated.busStops;
+      delete migrated.busStops;
+    }
+
+    migrated.providers = { ptv: ptvSettings };
+    migrated.activeProvider = 'ptv';
     needsSave = true;
   }
 
-  // Migrate busStop -> busStops
-  if ('busStop' in stored && stored.busStop && !stored.busStops) {
-    migrated.busStops = [stored.busStop];
-    delete (migrated as LegacyUserSettings).busStop;
+  // Step 3: Ensure required fields exist
+  if (!migrated.activeProvider) {
+    migrated.activeProvider = DEFAULT_SETTINGS.activeProvider;
     needsSave = true;
   }
-
-  // Apply new defaults for missing maxMinutes
+  if (!migrated.providers) {
+    migrated.providers = {};
+    needsSave = true;
+  }
   if (migrated.maxMinutes === undefined) {
     migrated.maxMinutes = DEFAULT_SETTINGS.maxMinutes;
     needsSave = true;
@@ -164,10 +259,10 @@ function migrateSettings(stored: UserSettings & LegacyUserSettings): UserSetting
   // Save migrated settings if changes were made
   if (needsSave && typeof window !== 'undefined') {
     // Defer save to avoid issues during load
-    setTimeout(() => saveSettings(migrated), 0);
+    setTimeout(() => saveSettings(migrated as UserSettings), 0);
   }
 
-  return migrated;
+  return migrated as UserSettings;
 }
 
 /**
@@ -248,42 +343,79 @@ export function clearSettings(): void {
 }
 
 /**
- * Get stops for a specific mode (array)
+ * Get the provider settings for the active provider
+ */
+export function getActiveProviderSettings(settings: UserSettings): ProviderSettings {
+  return settings.providers[settings.activeProvider] || {};
+}
+
+/**
+ * Get stops for a specific mode from the active provider
  */
 export function getStopsForMode(
   settings: UserSettings,
   mode: TransportMode
 ): StopConfig[] {
+  const providerSettings = getActiveProviderSettings(settings);
   switch (mode) {
     case 'tram':
-      return settings.tramStops || [];
+      return providerSettings.tramStops || [];
     case 'train':
-      return settings.trainStops || [];
+      return providerSettings.trainStops || [];
     case 'bus':
-      return settings.busStops || [];
+      return providerSettings.busStops || [];
+    case 'ferry':
+      return providerSettings.ferryStops || [];
+    case 'light_rail':
+      return providerSettings.lightRailStops || [];
+    case 'coach':
+      return providerSettings.coachStops || [];
     default:
       return [];
   }
 }
 
 /**
- * Set stops for a specific mode (array)
+ * Set stops for a specific mode in the active provider
  */
 export function setStopsForMode(
   settings: UserSettings,
   mode: TransportMode,
   configs: StopConfig[]
 ): UserSettings {
+  const providerSettings = getActiveProviderSettings(settings);
+  let updatedProviderSettings: ProviderSettings;
+
   switch (mode) {
     case 'tram':
-      return { ...settings, tramStops: configs };
+      updatedProviderSettings = { ...providerSettings, tramStops: configs };
+      break;
     case 'train':
-      return { ...settings, trainStops: configs };
+      updatedProviderSettings = { ...providerSettings, trainStops: configs };
+      break;
     case 'bus':
-      return { ...settings, busStops: configs };
+      updatedProviderSettings = { ...providerSettings, busStops: configs };
+      break;
+    case 'ferry':
+      updatedProviderSettings = { ...providerSettings, ferryStops: configs };
+      break;
+    case 'light_rail':
+      updatedProviderSettings = { ...providerSettings, lightRailStops: configs };
+      break;
+    case 'coach':
+      updatedProviderSettings = { ...providerSettings, coachStops: configs };
+      break;
     default:
       return settings;
   }
+
+  return {
+    ...settings,
+    providers: {
+      ...settings.providers,
+      [settings.activeProvider]: updatedProviderSettings,
+    },
+  };
 }
 
 /**
@@ -365,41 +497,58 @@ export interface EnabledStopInfo {
 }
 
 /**
- * Get all enabled stops across all modes
+ * Get supported modes for a provider
+ */
+export function getSupportedModes(providerId: ProviderId): TransportMode[] {
+  switch (providerId) {
+    case 'ptv':
+      return ['tram', 'train', 'bus', 'coach'];
+    case 'tfnsw':
+      return ['train', 'bus', 'ferry', 'light_rail', 'coach'];
+    default:
+      return ['train', 'bus'];
+  }
+}
+
+/**
+ * Get all enabled stops across all modes for the active provider
  */
 export function getEnabledStops(settings: UserSettings): EnabledStopInfo[] {
   const stops: EnabledStopInfo[] = [];
+  const providerSettings = getActiveProviderSettings(settings);
 
-  for (const config of settings.tramStops || []) {
-    if (config.enabled) {
-      stops.push({
-        mode: 'tram',
-        stop: config.stop,
-        directionIds: config.directionIds,
-        directionNames: config.directionNames,
-      });
+  const addStopsForMode = (mode: TransportMode, configs: StopConfig[] | undefined) => {
+    for (const config of configs || []) {
+      if (config.enabled) {
+        stops.push({
+          mode,
+          stop: config.stop,
+          directionIds: config.directionIds,
+          directionNames: config.directionNames,
+        });
+      }
     }
-  }
-  for (const config of settings.trainStops || []) {
-    if (config.enabled) {
-      stops.push({
-        mode: 'train',
-        stop: config.stop,
-        directionIds: config.directionIds,
-        directionNames: config.directionNames,
-      });
-    }
-  }
-  for (const config of settings.busStops || []) {
-    if (config.enabled) {
-      stops.push({
-        mode: 'bus',
-        stop: config.stop,
-        directionIds: config.directionIds,
-        directionNames: config.directionNames,
-      });
-    }
-  }
+  };
+
+  addStopsForMode('tram', providerSettings.tramStops);
+  addStopsForMode('train', providerSettings.trainStops);
+  addStopsForMode('bus', providerSettings.busStops);
+  addStopsForMode('ferry', providerSettings.ferryStops);
+  addStopsForMode('light_rail', providerSettings.lightRailStops);
+  addStopsForMode('coach', providerSettings.coachStops);
 
   return stops;
+}
+
+/**
+ * Set the active provider
+ */
+export function setActiveProvider(
+  settings: UserSettings,
+  providerId: ProviderId
+): UserSettings {
+  return {
+    ...settings,
+    activeProvider: providerId,
+  };
 }

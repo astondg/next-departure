@@ -8,21 +8,8 @@
 import { Departure, TransportMode } from '@/lib/providers/types';
 import { formatDepartureTime } from '@/lib/utils/time';
 import { GearIcon } from './GearIcon';
-
-interface StopConfig {
-  stop: { id: string; name: string; modes: string[] };
-  enabled: boolean;
-}
-
-interface UserSettings {
-  tramStops?: StopConfig[];
-  trainStops?: StopConfig[];
-  busStops?: StopConfig[];
-  refreshInterval: number;
-  departuresPerMode: number;
-  maxMinutes: number;
-  showAbsoluteTime: boolean;
-}
+import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
+import { PROVIDER_INFO, ProviderId } from '@/lib/providers';
 
 interface ModeSection {
   mode: TransportMode;
@@ -273,17 +260,8 @@ function ModeSectionComponent({
 }
 
 function getEnabledStopIds(settings: UserSettings): Set<string> {
-  const stopIds = new Set<string>();
-  for (const config of settings.tramStops || []) {
-    if (config.enabled) stopIds.add(config.stop.id);
-  }
-  for (const config of settings.trainStops || []) {
-    if (config.enabled) stopIds.add(config.stop.id);
-  }
-  for (const config of settings.busStops || []) {
-    if (config.enabled) stopIds.add(config.stop.id);
-  }
-  return stopIds;
+  const enabledStops = getEnabledStops(settings);
+  return new Set(enabledStops.map(s => s.stop.id));
 }
 
 export function ServerBoard({
@@ -354,7 +332,7 @@ export function ServerBoard({
         )}
       </main>
 
-      {/* Footer - subtle branding + settings */}
+      {/* Footer - provider indicator + settings */}
       <footer
         style={{
           display: 'flex',
@@ -366,7 +344,19 @@ export function ServerBoard({
           fontSize: '0.875rem',
         }}
       >
-        <span>Next Departure</span>
+        <span
+          id="provider-indicator"
+          data-provider={settings.activeProvider}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span style={{ fontWeight: 500 }}>
+            {PROVIDER_INFO[settings.activeProvider]?.region || 'Unknown'}
+          </span>
+        </span>
         <a
           href="/settings"
           style={{

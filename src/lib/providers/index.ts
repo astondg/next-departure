@@ -8,6 +8,7 @@
 
 import { TransitProvider, ProviderConfig } from './types';
 import { createPtvClient } from './ptv';
+import { createTfnswClient } from './tfnsw';
 
 // Re-export common types
 export * from './types';
@@ -15,8 +16,8 @@ export * from './types';
 /**
  * Available provider IDs
  */
-export type ProviderId = 'ptv';
-// Future providers: 'translink' | 'tfnsw' | 'transperth' | 'tfl' | etc.
+export type ProviderId = 'ptv' | 'tfnsw';
+// Future providers: 'translink' | 'transperth' | 'tfl' | etc.
 
 /**
  * Provider factory function type
@@ -28,6 +29,7 @@ type ProviderFactory = () => TransitProvider;
  */
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderFactory> = {
   ptv: createPtvClient,
+  tfnsw: createTfnswClient,
 };
 
 /**
@@ -40,6 +42,14 @@ export const PROVIDER_INFO: Record<ProviderId, Omit<ProviderConfig, 'baseUrl'>> 
     region: 'Victoria',
     country: 'AU',
     supportedModes: ['train', 'tram', 'bus', 'coach'],
+    supportsRealTime: true,
+  },
+  tfnsw: {
+    id: 'tfnsw',
+    name: 'Transport for NSW',
+    region: 'New South Wales',
+    country: 'AU',
+    supportedModes: ['train', 'bus', 'ferry', 'light_rail', 'coach'],
     supportsRealTime: true,
   },
 };
@@ -62,6 +72,8 @@ export function isProviderAvailable(id: ProviderId): boolean {
   switch (id) {
     case 'ptv':
       return !!(process.env.PTV_DEV_ID && process.env.PTV_API_KEY);
+    case 'tfnsw':
+      return !!process.env.TFNSW_API_KEY;
     default:
       return false;
   }

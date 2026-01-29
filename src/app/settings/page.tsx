@@ -9,30 +9,19 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { getProvider, isProviderAvailable } from '@/lib/providers';
+import { getProvider, isProviderAvailable, ProviderId, PROVIDER_INFO } from '@/lib/providers';
 import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
+import {
+  UserSettings,
+  DEFAULT_SETTINGS as STORAGE_DEFAULT_SETTINGS,
+  StopConfig,
+  ProviderSettings,
+  getStopsForMode,
+  getSupportedModes,
+} from '@/lib/utils/storage';
+import { TransportMode } from '@/lib/providers/types';
 
 const SETTINGS_KEY = 'next-departure-settings';
-
-interface StopConfig {
-  stop: { id: string; name: string; modes: string[] };
-  enabled: boolean;
-}
-
-interface UserSettings {
-  tramStop?: StopConfig;
-  trainStop?: StopConfig;
-  busStop?: StopConfig;
-  refreshInterval: number;
-  departuresPerMode: number;
-  showAbsoluteTime: boolean;
-}
-
-const DEFAULT_SETTINGS: UserSettings = {
-  refreshInterval: DEFAULT_REFRESH_INTERVAL,
-  departuresPerMode: 2,
-  showAbsoluteTime: false,
-};
 
 async function getSettings(): Promise<UserSettings> {
   const cookieStore = await cookies();
@@ -41,13 +30,39 @@ async function getSettings(): Promise<UserSettings> {
   if (settingsCookie?.value) {
     try {
       const decoded = decodeURIComponent(settingsCookie.value);
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(decoded) };
+      const parsed = JSON.parse(decoded);
+
+      // Ensure required fields exist
+      const settings: UserSettings = {
+        ...STORAGE_DEFAULT_SETTINGS,
+        ...parsed,
+      };
+
+      // Migrate legacy flat format if needed
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacy = parsed as any;
+      if (
+        (legacy.tramStops || legacy.trainStops || legacy.busStops) &&
+        (!settings.providers || Object.keys(settings.providers).length === 0)
+      ) {
+        const ptvSettings: ProviderSettings = {};
+        if (legacy.tramStops) ptvSettings.tramStops = legacy.tramStops;
+        if (legacy.trainStops) ptvSettings.trainStops = legacy.trainStops;
+        if (legacy.busStops) ptvSettings.busStops = legacy.busStops;
+        settings.providers = { ptv: ptvSettings };
+        settings.activeProvider = 'ptv';
+      }
+
+      if (!settings.activeProvider) settings.activeProvider = 'ptv';
+      if (!settings.providers) settings.providers = {};
+
+      return settings;
     } catch {
-      return DEFAULT_SETTINGS;
+      return STORAGE_DEFAULT_SETTINGS;
     }
   }
 
-  return DEFAULT_SETTINGS;
+  return STORAGE_DEFAULT_SETTINGS;
 }
 
 async function saveSettingsCookie(settings: UserSettings) {
@@ -73,11 +88,83 @@ async function updateDisplaySettings(formData: FormData) {
   redirect('/settings');
 }
 
+function setStopForMode(settings: UserSettings, mode: TransportMode, config: StopConfig): UserSettings {
+  const providerSettings = settings.providers[settings.activeProvider] || {};
+  let updatedProviderSettings: ProviderSettings;
+
+  switch (mode) {
+    case 'tram':
+      updatedProviderSettings = { ...providerSettings, tramStops: [config] };
+      break;
+    case 'train':
+      updatedProviderSettings = { ...providerSettings, trainStops: [config] };
+      break;
+    case 'bus':
+      updatedProviderSettings = { ...providerSettings, busStops: [config] };
+      break;
+    case 'ferry':
+      updatedProviderSettings = { ...providerSettings, ferryStops: [config] };
+      break;
+    case 'light_rail':
+      updatedProviderSettings = { ...providerSettings, lightRailStops: [config] };
+      break;
+    case 'coach':
+      updatedProviderSettings = { ...providerSettings, coachStops: [config] };
+      break;
+    default:
+      return settings;
+  }
+
+  return {
+    ...settings,
+    providers: {
+      ...settings.providers,
+      [settings.activeProvider]: updatedProviderSettings,
+    },
+  };
+}
+
+function removeStopForModeFromSettings(settings: UserSettings, mode: TransportMode): UserSettings {
+  const providerSettings = settings.providers[settings.activeProvider] || {};
+  let updatedProviderSettings: ProviderSettings;
+
+  switch (mode) {
+    case 'tram':
+      updatedProviderSettings = { ...providerSettings, tramStops: undefined };
+      break;
+    case 'train':
+      updatedProviderSettings = { ...providerSettings, trainStops: undefined };
+      break;
+    case 'bus':
+      updatedProviderSettings = { ...providerSettings, busStops: undefined };
+      break;
+    case 'ferry':
+      updatedProviderSettings = { ...providerSettings, ferryStops: undefined };
+      break;
+    case 'light_rail':
+      updatedProviderSettings = { ...providerSettings, lightRailStops: undefined };
+      break;
+    case 'coach':
+      updatedProviderSettings = { ...providerSettings, coachStops: undefined };
+      break;
+    default:
+      return settings;
+  }
+
+  return {
+    ...settings,
+    providers: {
+      ...settings.providers,
+      [settings.activeProvider]: updatedProviderSettings,
+    },
+  };
+}
+
 async function selectStop(formData: FormData) {
   'use server';
 
-  const settings = await getSettings();
-  const mode = formData.get('mode') as string;
+  let settings = await getSettings();
+  const mode = formData.get('mode') as TransportMode;
   const stopId = formData.get('stopId') as string;
   const stopName = formData.get('stopName') as string;
 
@@ -86,9 +173,7 @@ async function selectStop(formData: FormData) {
     enabled: true,
   };
 
-  if (mode === 'tram') settings.tramStop = stopConfig;
-  if (mode === 'train') settings.trainStop = stopConfig;
-  if (mode === 'bus') settings.busStop = stopConfig;
+  settings = setStopForMode(settings, mode, stopConfig);
 
   await saveSettingsCookie(settings);
   revalidatePath('/settings');
@@ -98,31 +183,27 @@ async function selectStop(formData: FormData) {
 async function removeStop(formData: FormData) {
   'use server';
 
-  const settings = await getSettings();
-  const mode = formData.get('mode') as string;
+  let settings = await getSettings();
+  const mode = formData.get('mode') as TransportMode;
 
-  if (mode === 'tram') settings.tramStop = undefined;
-  if (mode === 'train') settings.trainStop = undefined;
-  if (mode === 'bus') settings.busStop = undefined;
+  settings = removeStopForModeFromSettings(settings, mode);
 
   await saveSettingsCookie(settings);
   revalidatePath('/settings');
   redirect('/settings');
 }
 
-async function searchStops(query: string, mode: string): Promise<{ id: string; name: string }[]> {
+async function searchStops(query: string, mode: string, providerId: ProviderId): Promise<{ id: string; name: string }[]> {
   if (!query || query.length < 3) return [];
 
   try {
-    // Call provider directly instead of HTTP request to avoid Vercel deployment protection issues
-    if (!isProviderAvailable('ptv')) {
-      console.error('PTV provider not available');
+    if (!isProviderAvailable(providerId)) {
+      console.error(`${providerId} provider not available`);
       return [];
     }
 
-    const provider = getProvider('ptv');
-    // Filter by mode to match client-side behavior
-    const transportMode = mode as 'tram' | 'train' | 'bus';
+    const provider = getProvider(providerId);
+    const transportMode = mode as TransportMode;
     const stops = await provider.searchStops(query, transportMode);
     return stops.slice(0, 8).map((stop) => ({ id: stop.id, name: stop.name }));
   } catch (error) {
@@ -136,11 +217,18 @@ export const metadata = {
   title: 'Settings - Next Departure',
 };
 
-const MODES = [
-  { mode: 'tram', label: 'Tram', icon: 'Tram' },
-  { mode: 'train', label: 'Train', icon: 'Train' },
-  { mode: 'bus', label: 'Bus', icon: 'Bus' },
-] as const;
+function getModeLabel(mode: TransportMode): string {
+  const labels: Record<TransportMode, string> = {
+    train: 'Train',
+    tram: 'Tram',
+    bus: 'Bus',
+    ferry: 'Ferry',
+    light_rail: 'Light Rail',
+    metro: 'Metro',
+    coach: 'Coach',
+  };
+  return labels[mode] || mode;
+}
 
 export default async function SettingsPage({
   searchParams,
@@ -150,19 +238,21 @@ export default async function SettingsPage({
   const settings = await getSettings();
   const params = await searchParams;
 
-  const searchMode = params.searchMode as string | undefined;
+  const searchMode = params.searchMode as TransportMode | undefined;
   const searchQuery = params.q as string | undefined;
+  const activeProvider = settings.activeProvider;
+
+  // Get supported modes for the active provider
+  const supportedModes = getSupportedModes(activeProvider);
 
   let searchResults: { id: string; name: string }[] = [];
   if (searchMode && searchQuery && searchQuery.length >= 3) {
-    searchResults = await searchStops(searchQuery, searchMode);
+    searchResults = await searchStops(searchQuery, searchMode, activeProvider);
   }
 
-  const getStopConfig = (mode: string): StopConfig | undefined => {
-    if (mode === 'tram') return settings.tramStop;
-    if (mode === 'train') return settings.trainStop;
-    if (mode === 'bus') return settings.busStop;
-    return undefined;
+  const getFirstStopConfig = (mode: TransportMode): StopConfig | undefined => {
+    const stops = getStopsForMode(settings, mode);
+    return stops.length > 0 ? stops[0] : undefined;
   };
 
   return (
@@ -175,21 +265,32 @@ export default async function SettingsPage({
       </header>
 
       <main className="p-4 max-w-lg mx-auto">
+        {/* Provider indicator */}
+        <section className="mb-4 p-3 bg-gray-100 border border-black">
+          <div className="text-sm">
+            <span className="font-bold">Region:</span>{' '}
+            {PROVIDER_INFO[activeProvider]?.region || activeProvider}
+          </div>
+          <p className="text-xs text-gray-600 mt-1">
+            Enable JavaScript for full settings including region switching.
+          </p>
+        </section>
+
         {/* Stop Configuration */}
         <section className="mb-6">
           <h2 className="font-bold text-sm uppercase tracking-wider mb-3 border-b border-black pb-1">
             Your Stops
           </h2>
 
-          {MODES.map(({ mode, label, icon }) => {
-            const config = getStopConfig(mode);
+          {supportedModes.map((mode) => {
+            const label = getModeLabel(mode);
+            const config = getFirstStopConfig(mode);
             const isSearchingThis = searchMode === mode;
 
             return (
               <div key={mode} className="py-3 border-b border-gray-300">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold">[{icon}]</span>
-                  <span className="font-bold">{label}</span>
+                  <span className="font-bold">[{label}]</span>
                 </div>
 
                 {config ? (

@@ -13,6 +13,8 @@ import { formatDepartureTime } from '@/lib/utils/time';
 import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
 import { GearIcon } from './GearIcon';
 import { TransportIcon, getModeLabel } from './TransportIcon';
+import { ProviderSelector } from './ProviderSelector';
+import { ProviderId } from '@/lib/providers';
 
 /** Duration of fade-out animation in ms */
 const FADE_OUT_DURATION = 500;
@@ -33,6 +35,7 @@ interface CombinedBoardProps {
   settings: UserSettings;
   fetchedAt: string;
   onSettingsClick: () => void;
+  onProviderChange?: (providerId: ProviderId) => void;
   now?: Date;
   isLoadingNearby?: boolean;
 }
@@ -319,6 +322,7 @@ export function CombinedBoard({
   settings,
   fetchedAt,
   onSettingsClick,
+  onProviderChange,
   now = new Date(),
   isLoadingNearby = false,
 }: CombinedBoardProps) {
@@ -412,9 +416,16 @@ export function CombinedBoard({
         )}
       </main>
 
-      {/* Footer - subtle branding + settings */}
+      {/* Footer - provider selector + settings */}
       <footer className="flex items-center justify-between px-4 py-2 border-t border-gray-300 text-gray-400 text-sm">
-        <span>Next Departure</span>
+        {onProviderChange ? (
+          <ProviderSelector
+            activeProvider={settings.activeProvider}
+            onProviderChange={onProviderChange}
+          />
+        ) : (
+          <span>Next Departure</span>
+        )}
         <a
           href="/settings"
           onClick={(e) => {
