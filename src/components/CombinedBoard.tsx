@@ -66,6 +66,7 @@ function CompactDepartureRow({
   // For trains, routeName is often the full line name (e.g., "Hurstbridge")
   // which is redundant with the direction header - don't show it
   const isTrain = departure.mode === 'train';
+  const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
 
   return (
     <div
@@ -77,6 +78,13 @@ function CompactDepartureRow({
       {!isTrain && (
         <span className="font-bold text-xl w-14 text-center flex-shrink-0 truncate">
           {departure.routeName}
+        </span>
+      )}
+
+      {/* Express indicator */}
+      {isExpress && (
+        <span className={`text-xs font-bold px-1 border ${isDeparting ? 'border-white' : 'border-current'}`}>
+          E
         </span>
       )}
 

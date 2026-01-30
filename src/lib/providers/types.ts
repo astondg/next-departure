@@ -62,6 +62,9 @@ export interface Departure {
   /** Whether real-time data is available for this departure */
   isRealTime: boolean;
 
+  /** Number of stops skipped (express service) - 0 or undefined means stopping all stations */
+  expressStopCount?: number;
+
   /** Status flags */
   status?: {
     /** Is the service cancelled? */

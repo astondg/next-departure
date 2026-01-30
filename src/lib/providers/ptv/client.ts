@@ -162,6 +162,7 @@ export class PtvClient implements TransitProvider {
       platform: ptvDeparture.platform_number || undefined,
       mode,
       isRealTime: !!ptvDeparture.estimated_departure_utc,
+      expressStopCount: run?.express_stop_count || undefined,
       status: {
         cancelled: ptvDeparture.flags?.includes('CAN') || false,
         delayed:

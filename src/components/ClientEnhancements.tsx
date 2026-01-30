@@ -80,18 +80,15 @@ export function ClientEnhancements({
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastLocationFetchRef = useRef<number>(0);
 
+  // Track if we've received client data (don't hide server board until then)
+  const [hasClientData, setHasClientData] = useState(false);
+
   // Enable JS features after hydration
   useEffect(() => {
     // Load settings from localStorage (may have more recent data than cookies)
     const localSettings = loadSettings();
     setSettings(localSettings);
     setJsEnabled(true);
-
-    // Hide server-rendered board, show client-rendered one
-    const serverBoard = document.getElementById('departure-board');
-    if (serverBoard) {
-      serverBoard.style.display = 'none';
-    }
 
     // Intercept settings link clicks to open modal instead
     const settingsLink = document.getElementById('settings-link');
@@ -102,10 +99,27 @@ export function ClientEnhancements({
       });
     }
 
+    // Register service worker for PWA offline support
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((error) => {
+        console.warn('Service worker registration failed:', error);
+      });
+    }
+
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  // Hide server board only after we have client data
+  useEffect(() => {
+    if (hasClientData) {
+      const serverBoard = document.getElementById('departure-board');
+      if (serverBoard) {
+        serverBoard.style.display = 'none';
+      }
+    }
+  }, [hasClientData]);
 
   // Update clock every second
   useEffect(() => {
@@ -125,28 +139,31 @@ export function ClientEnhancements({
   }, [jsEnabled, settings]);
 
   // Fetch departures for a list of stops with optional direction filters
+  // Uses parallel fetching for better performance and preserves existing data on error
   const fetchDeparturesForStops = useCallback(async (
     stops: EnabledStopInfo[]
   ) => {
     if (stops.length === 0) {
       setSections([]);
+      setHasClientData(true);
       return;
     }
 
-    const newSections: ModeSection[] = [];
-
-    for (const { mode, stop, directionIds } of stops) {
+    // Fetch all stops in parallel for better performance
+    const fetchPromises = stops.map(async ({ mode, stop, directionIds }): Promise<ModeSection> => {
       try {
         // Determine if we should group by direction
         // Group when: no direction filter (showing all directions)
         const hasDirectionFilter = directionIds && directionIds.length > 0;
         const groupByDirection = !hasDirectionFilter;
 
-        // Fetch more departures when showing all directions (need N per direction)
-        // or when filtering (need enough to fill N after filtering)
+        // Fetch 2x the departures as a buffer for mobile backgrounding
+        // This ensures we have useful data to show immediately when the app comes back
+        // to foreground, even if some departures have passed during the background period
+        const bufferMultiplier = 2;
         const fetchLimit = groupByDirection
-          ? (settings.departuresPerMode + 2) * 4  // Enough for multiple directions
-          : (settings.departuresPerMode + 2) * 3; // Enough after filtering
+          ? (settings.departuresPerMode * bufferMultiplier + 2) * 4  // Enough for multiple directions
+          : (settings.departuresPerMode * bufferMultiplier + 2) * 3; // Enough after filtering
 
         const params = new URLSearchParams({
           provider: settings.activeProvider,
@@ -170,40 +187,71 @@ export function ClientEnhancements({
             );
           }
 
-          newSections.push({
+          return {
             mode,
             stopId: stop.id,
             stopName: data.stop?.name || stop.name,
             departures,
             isLoading: false,
             groupByDirection,
-          });
+          };
         } else {
-          newSections.push({
+          // On API error, return error state but we'll try to preserve previous data
+          return {
             mode,
             stopId: stop.id,
             stopName: stop.name,
             departures: [],
             isLoading: false,
             error: 'Failed to fetch',
-          });
+          };
         }
       } catch (error) {
-        console.error(`Error fetching ${mode} departures:`, error);
-        newSections.push({
+        console.error(`Error fetching ${mode} departures for ${stop.id}:`, error);
+        return {
           mode,
           stopId: stop.id,
           stopName: stop.name,
           departures: [],
           isLoading: false,
           error: 'Network error',
-        });
+        };
       }
-    }
+    });
+
+    // Wait for all fetches to complete in parallel
+    const newSections = await Promise.all(fetchPromises);
 
     if (mountedRef.current) {
-      setSections(newSections);
+      // Merge new sections with existing data: if a new section has an error or no departures,
+      // try to keep the previous data for that section (better than showing nothing)
+      setSections(prevSections => {
+        return newSections.map(newSection => {
+          // If new section has data, use it
+          if (newSection.departures.length > 0 && !newSection.error) {
+            return newSection;
+          }
+
+          // If new section has error or no data, try to find previous data for this stop
+          const prevSection = prevSections.find(
+            ps => ps.stopId === newSection.stopId && ps.mode === newSection.mode
+          );
+
+          // If we have previous data with departures, keep it (mark as potentially stale)
+          if (prevSection && prevSection.departures.length > 0 && !prevSection.error) {
+            return {
+              ...prevSection,
+              // Keep previous departures but update stop name if we got one
+              stopName: newSection.stopName || prevSection.stopName,
+            };
+          }
+
+          // No previous data, use new (possibly empty) section
+          return newSection;
+        });
+      });
       setFetchedAt(new Date().toISOString());
+      setHasClientData(true);
     }
   }, [settings.departuresPerMode, settings.maxMinutes, settings.activeProvider]);
 
@@ -321,11 +369,15 @@ export function ClientEnhancements({
     };
 
     // Handle page visibility changes (device lock, app background, tab switch)
-    const handleVisibilityChange = async () => {
+    const handleVisibilityChange = () => {
       isVisible = !document.hidden;
 
       if (isVisible) {
-        // Page became visible - check if data is stale
+        // Page became visible - immediately update clock to re-filter cached departures
+        // This shows useful data instantly without waiting for a fetch
+        setNow(new Date());
+
+        // Check if data is stale
         const timeSinceLastFetch = Date.now() - lastFetchTime;
         const isStale = timeSinceLastFetch > settings.refreshInterval * 1000;
 
@@ -334,16 +386,20 @@ export function ClientEnhancements({
           const timeSinceLocationFetch = Date.now() - lastLocationFetchRef.current;
           if (timeSinceLocationFetch > LOCATION_STALE_THRESHOLD) {
             // Location is stale, re-fetch nearby stops (which will trigger departure fetch)
+            // This runs in background - no await
             fetchNearbyStops(false);
           } else if (isStale) {
-            // Location is fresh but departures are stale
-            await fetchDepartures();
-            lastFetchTime = Date.now();
+            // Location is fresh but departures are stale - fetch in background (no await)
+            fetchDepartures().then(() => {
+              lastFetchTime = Date.now();
+            });
           }
         } else if (isStale) {
-          // Home mode - just refresh departures
-          await fetchDepartures();
-          lastFetchTime = Date.now();
+          // Home mode - fetch fresh data in background (no await)
+          // User sees cached/buffered data immediately
+          fetchDepartures().then(() => {
+            lastFetchTime = Date.now();
+          });
         }
 
         // Restart the refresh timer

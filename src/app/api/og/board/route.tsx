@@ -360,6 +360,7 @@ export async function GET(request: NextRequest) {
                   );
                   const isDeparting = timeInfo.display === 'now';
                   const isTrain = departure.mode === 'train';
+                  const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
 
                   return (
                     <div
@@ -389,6 +390,23 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
+                      {/* Express indicator */}
+                      {isExpress && (
+                        <span
+                          style={{
+                            fontSize: `${fontSize.platform}px`,
+                            fontWeight: 700,
+                            padding: `${Math.round(2 * fontScale)}px ${Math.round(4 * fontScale)}px`,
+                            border: `${borderWidth}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                            marginLeft: isTrain ? '0' : `${Math.round(4 * fontScale)}px`,
+                            marginRight: `${Math.round(4 * fontScale)}px`,
+                            flexShrink: 0,
+                          }}
+                        >
+                          E
+                        </span>
+                      )}
+
                       {/* Destination */}
                       <span
                         style={{
@@ -398,7 +416,7 @@ export async function GET(request: NextRequest) {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
+                          marginLeft: isTrain && !isExpress ? '0' : `${Math.round(8 * fontScale)}px`,
                           marginRight: `${Math.round(8 * fontScale)}px`,
                         }}
                       >
