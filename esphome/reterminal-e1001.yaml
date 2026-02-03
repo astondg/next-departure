@@ -19,7 +19,7 @@ substitutions:
   use_sidebar: "true"
   # Timezone for "Updated" timestamp (must match time.timezone below)
   # Use URL-encoded format: Australia%2FMelbourne (/ becomes %2F)
-  timezone: "Australia%2FMelbourne"
+  timezone: "Australia%%2FMelbourne"
 
 esphome:
   name: reterminal-e1001
@@ -30,12 +30,12 @@ esphome:
       - wait_until:
           wifi.connected:
       - wait_until:
-          lambda: 'return id(sntp_time).now().is_valid();'
+          lambda: "return id(sntp_time).now().is_valid();"
       # Read sensor values before fetching image
       - component.update: sht4x_sensor
       # Enable battery voltage divider, read, then disable to save power
       - switch.turn_on: battery_enable
-      - delay: 50ms  # Allow voltage to stabilize
+      - delay: 50ms # Allow voltage to stabilize
       - component.update: battery_voltage
       - switch.turn_off: battery_enable
       - delay: 50ms
@@ -74,7 +74,7 @@ psram:
   speed: 80MHz
 
 logger:
-  level: DEBUG  # Temporarily enable to see I2C scan
+  level: DEBUG # Temporarily enable to see I2C scan
   baud_rate: 0
 
 api:
@@ -118,7 +118,7 @@ sensor:
       id: humidity
       unit_of_measurement: "%"
       accuracy_decimals: 0
-    update_interval: never  # Only update on demand
+    update_interval: never # Only update on demand
 
   # Battery voltage monitoring
   - platform: adc
@@ -128,7 +128,7 @@ sensor:
     update_interval: never
     attenuation: 12db
     filters:
-      - multiply: 2.0  # Voltage divider compensation
+      - multiply: 2.0 # Voltage divider compensation
 
   # Battery percentage (approximate)
   - platform: template
@@ -150,7 +150,7 @@ switch:
   - platform: gpio
     pin: GPIO21
     id: battery_enable
-    restore_mode: ALWAYS_OFF  # Save power, only enable when reading
+    restore_mode: ALWAYS_OFF # Save power, only enable when reading
 
 deep_sleep:
   id: deep_sleep_control
@@ -159,7 +159,7 @@ deep_sleep:
 
 online_image:
   - id: departure_image
-    url: "${board_url}"  # Initial URL, updated dynamically with sensor data
+    url: "${board_url}" # Initial URL, updated dynamically with sensor data
     format: PNG
     type: BINARY
     resize: 800x480
