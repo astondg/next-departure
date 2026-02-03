@@ -69,7 +69,7 @@ deep_sleep:
 
 online_image:
   - id: departure_image
-    url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1207,train:1201&limit=3"
+    url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1201:1&limit=3"
     format: PNG
     type: BINARY
     resize: 800x480

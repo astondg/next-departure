@@ -4,10 +4,10 @@
  * Returns a PNG image of the departure board optimized for ESP32 e-ink displays.
  * Uses pure B/W colors with thick borders and large fonts.
  *
- * GET /api/og/board?stops=tram:1001,train:2001&width=800&height=480&limit=3&scale=2&orientation=landscape
+ * GET /api/og/board?stops=tram:1001,train:2001:5&width=800&height=480&limit=3&scale=2&orientation=landscape
  *
  * Query parameters:
- *   - stops: comma-separated mode:stopId pairs (required)
+ *   - stops: comma-separated mode:stopId[:directionIds] (required, directionIds optional, use + for multiple: train:1001:5+12)
  *   - width: image width in pixels (default 800, max 1200)
  *   - height: image height in pixels (default 480, max 800)
  *   - orientation: 'landscape' (default) or 'portrait' - swaps width/height defaults
@@ -94,14 +94,18 @@ async function fetchStopDepartures(
   mode: TransportMode,
   stopId: string,
   limit: number,
-  maxMinutes: number
+  maxMinutes: number,
+  directionIds?: string[]
 ): Promise<StopData> {
   try {
+    // Fetch more if filtering by direction (to ensure we get enough after filtering)
+    const fetchLimit = directionIds && directionIds.length > 0 ? (limit + 2) * 3 : limit + 2;
+
     const params = new URLSearchParams({
       provider: 'ptv',
       stopId,
       mode,
-      limit: String(limit + 2),
+      limit: String(fetchLimit),
       maxMinutes: String(maxMinutes),
     });
 
@@ -136,11 +140,18 @@ async function fetchStopDepartures(
 
     // Filter out departed services (same logic as client/server dashboards)
     const now = new Date();
-    const upcoming = (result.departures || []).filter((d: Departure) => {
+    let upcoming = (result.departures || []).filter((d: Departure) => {
       const time = new Date(d.estimatedTime || d.scheduledTime);
       const diffMinutes = Math.round((time.getTime() - now.getTime()) / 1000 / 60);
       return diffMinutes >= 0; // Filter out "gone" departures
     });
+
+    // Filter by direction if specified
+    if (directionIds && directionIds.length > 0) {
+      upcoming = upcoming.filter((d: Departure) =>
+        d.direction?.id && directionIds.includes(d.direction.id)
+      );
+    }
 
     return {
       mode,
@@ -160,10 +171,13 @@ async function fetchStopDepartures(
   }
 }
 
-function parseStops(stopsParam: string): { mode: TransportMode; stopId: string }[] {
+function parseStops(stopsParam: string): { mode: TransportMode; stopId: string; directionIds?: string[] }[] {
   return stopsParam.split(',').map((pair) => {
-    const [mode, stopId] = pair.split(':');
-    return { mode: mode as TransportMode, stopId };
+    const parts = pair.split(':');
+    const [mode, stopId, directionsPart] = parts;
+    // Support multiple directions with + separator: train:1001:5+12
+    const directionIds = directionsPart ? directionsPart.split('+') : undefined;
+    return { mode: mode as TransportMode, stopId, directionIds };
   });
 }
 
@@ -203,8 +217,8 @@ export async function GET(request: NextRequest) {
   const [interBoldData, interRegularData, ...stopDataResults] = await Promise.all([
     interBold,
     interRegular,
-    ...stopRequests.map(({ mode, stopId }) =>
-      fetchStopDepartures(baseUrl, mode, stopId, limit, maxMinutes)
+    ...stopRequests.map(({ mode, stopId, directionIds }) =>
+      fetchStopDepartures(baseUrl, mode, stopId, limit, maxMinutes, directionIds)
     ),
   ]);
 
@@ -422,13 +436,15 @@ export async function GET(request: NextRequest) {
                       {isExpress && (
                         <span
                           style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             fontSize: `${fontSize.destination}px`,
                             fontWeight: 700,
                             padding: `${Math.round(2 * fontScale)}px 0`,
                             border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                             marginRight: `${Math.round(8 * fontScale)}px`,
                             minWidth: `${Math.round(28 * fontScale)}px`,
-                            textAlign: 'center',
                             flexShrink: 0,
                           }}
                         >
@@ -440,13 +456,15 @@ export async function GET(request: NextRequest) {
                       {departure.platform && (
                         <span
                           style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             fontSize: `${fontSize.destination}px`,
                             border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                             padding: `${Math.round(2 * fontScale)}px 0`,
                             fontWeight: 700,
                             marginRight: `${Math.round(8 * fontScale)}px`,
                             minWidth: `${Math.round(28 * fontScale)}px`,
-                            textAlign: 'center',
                             flexShrink: 0,
                           }}
                         >
