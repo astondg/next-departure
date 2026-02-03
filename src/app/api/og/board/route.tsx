@@ -21,21 +21,28 @@
  *   - sidebar: enable sidebar layout with weather panel (default false, e.g., "true")
  *             When enabled, displays 2/3 timetable + 1/3 weather sidebar
  *   - tz: timezone for "Updated" timestamp (e.g., "Australia/Melbourne"). Falls back to UTC.
+ *   - invert: invert colors for dark mode e-ink displays (default false, e.g., "true")
  */
 
-import { ImageResponse } from '@vercel/og';
-import { NextRequest } from 'next/server';
-import { TransportMode, Departure } from '@/lib/providers/types';
+import { ImageResponse } from "@vercel/og";
+import { NextRequest } from "next/server";
+import { TransportMode, Departure } from "@/lib/providers/types";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 // Load Inter font for crisp rendering
 const interBold = fetch(
-  new URL('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff', import.meta.url)
+  new URL(
+    "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff",
+    import.meta.url,
+  ),
 ).then((res) => res.arrayBuffer());
 
 const interRegular = fetch(
-  new URL('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff', import.meta.url)
+  new URL(
+    "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff",
+    import.meta.url,
+  ),
 ).then((res) => res.arrayBuffer());
 
 interface StopData {
@@ -59,7 +66,7 @@ interface TimeInfo {
 function formatDepartureTime(
   scheduledTime: string,
   estimatedTime?: string,
-  showAbsolute: boolean = false
+  showAbsolute: boolean = false,
 ): TimeInfo {
   const effectiveTime = estimatedTime || scheduledTime;
   const targetTime = new Date(effectiveTime);
@@ -74,17 +81,21 @@ function formatDepartureTime(
   }
 
   if (showAbsolute) {
-    const hours = String(targetTime.getHours()).padStart(2, '0');
-    const minutes = String(targetTime.getMinutes()).padStart(2, '0');
-    return { display: `${hours}:${minutes}`, isRealTime: !!estimatedTime, delayMinutes };
+    const hours = String(targetTime.getHours()).padStart(2, "0");
+    const minutes = String(targetTime.getMinutes()).padStart(2, "0");
+    return {
+      display: `${hours}:${minutes}`,
+      isRealTime: !!estimatedTime,
+      delayMinutes,
+    };
   }
 
   const diffMs = targetTime.getTime() - now.getTime();
   const diffMinutes = Math.round(diffMs / 1000 / 60);
 
   let display: string;
-  if (diffMinutes < 0) display = 'gone';
-  else if (diffMinutes === 0) display = 'now';
+  if (diffMinutes < 0) display = "gone";
+  else if (diffMinutes === 0) display = "now";
   else if (diffMinutes < 60) display = `${diffMinutes}m`;
   else {
     const hours = Math.floor(diffMinutes / 60);
@@ -101,23 +112,27 @@ async function fetchStopDepartures(
   stopId: string,
   limit: number,
   maxMinutes: number,
-  directionIds?: string[]
+  directionIds?: string[],
 ): Promise<StopData> {
   try {
     // Fetch more if filtering by direction (to ensure we get enough after filtering)
-    const fetchLimit = directionIds && directionIds.length > 0 ? (limit + 2) * 3 : limit + 2;
+    const fetchLimit =
+      directionIds && directionIds.length > 0 ? (limit + 2) * 3 : limit + 2;
 
     const params = new URLSearchParams({
-      provider: 'ptv',
+      provider: "ptv",
       stopId,
       mode,
       limit: String(fetchLimit),
       maxMinutes: String(maxMinutes),
     });
 
-    const response = await fetch(`${baseUrl}/api/departures?${params.toString()}`, {
-      cache: 'no-store', // Always fetch fresh data for the image
-    });
+    const response = await fetch(
+      `${baseUrl}/api/departures?${params.toString()}`,
+      {
+        cache: "no-store", // Always fetch fresh data for the image
+      },
+    );
 
     if (!response.ok) {
       return {
@@ -125,9 +140,10 @@ async function fetchStopDepartures(
         stopId,
         stopName: `${mode}:${stopId}`,
         departures: [],
-        error: response.status === 404
-          ? `Stop not found`
-          : `API error (${response.status})`,
+        error:
+          response.status === 404
+            ? `Stop not found`
+            : `API error (${response.status})`,
       };
     }
 
@@ -140,7 +156,7 @@ async function fetchStopDepartures(
         stopId,
         stopName: `${mode}:${stopId}`,
         departures: [],
-        error: 'Invalid stop ID',
+        error: "Invalid stop ID",
       };
     }
 
@@ -148,14 +164,17 @@ async function fetchStopDepartures(
     const now = new Date();
     let upcoming = (result.departures || []).filter((d: Departure) => {
       const time = new Date(d.estimatedTime || d.scheduledTime);
-      const diffMinutes = Math.round((time.getTime() - now.getTime()) / 1000 / 60);
+      const diffMinutes = Math.round(
+        (time.getTime() - now.getTime()) / 1000 / 60,
+      );
       return diffMinutes >= 0; // Filter out "gone" departures
     });
 
     // Filter by direction if specified
     if (directionIds && directionIds.length > 0) {
-      upcoming = upcoming.filter((d: Departure) =>
-        d.direction?.id && directionIds.includes(d.direction.id)
+      upcoming = upcoming.filter(
+        (d: Departure) =>
+          d.direction?.id && directionIds.includes(d.direction.id),
       );
     }
 
@@ -172,17 +191,19 @@ async function fetchStopDepartures(
       stopId,
       stopName: `${mode}:${stopId}`,
       departures: [],
-      error: 'Connection failed',
+      error: "Connection failed",
     };
   }
 }
 
-function parseStops(stopsParam: string): { mode: TransportMode; stopId: string; directionIds?: string[] }[] {
-  return stopsParam.split(',').map((pair) => {
-    const parts = pair.split(':');
+function parseStops(
+  stopsParam: string,
+): { mode: TransportMode; stopId: string; directionIds?: string[] }[] {
+  return stopsParam.split(",").map((pair) => {
+    const parts = pair.split(":");
     const [mode, stopId, directionsPart] = parts;
     // Support multiple directions with + separator: train:1001:5+12
-    const directionIds = directionsPart ? directionsPart.split('+') : undefined;
+    const directionIds = directionsPart ? directionsPart.split("+") : undefined;
     return { mode: mode as TransportMode, stopId, directionIds };
   });
 }
@@ -193,9 +214,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = url;
 
   // Parse query parameters
-  const stopsParam = searchParams.get('stops');
-  const orientation = searchParams.get('orientation') || 'landscape';
-  const isPortrait = orientation === 'portrait';
+  const stopsParam = searchParams.get("stops");
+  const orientation = searchParams.get("orientation") || "landscape";
+  const isPortrait = orientation === "portrait";
 
   // Default dimensions based on orientation
   const defaultWidth = isPortrait ? 480 : 800;
@@ -203,48 +224,74 @@ export async function GET(request: NextRequest) {
   const maxWidth = isPortrait ? 800 : 1200;
   const maxHeight = isPortrait ? 1200 : 800;
 
-  const baseWidth = Math.min(parseInt(searchParams.get('width') || String(defaultWidth), 10), maxWidth);
-  const baseHeight = Math.min(parseInt(searchParams.get('height') || String(defaultHeight), 10), maxHeight);
-  const limit = Math.min(parseInt(searchParams.get('limit') || '3', 10), 5);
-  const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
-  const showAbsolute = searchParams.get('showAbsolute') === 'true';
-  const scale = Math.min(Math.max(parseFloat(searchParams.get('scale') || '1'), 1), 3);
+  const baseWidth = Math.min(
+    parseInt(searchParams.get("width") || String(defaultWidth), 10),
+    maxWidth,
+  );
+  const baseHeight = Math.min(
+    parseInt(searchParams.get("height") || String(defaultHeight), 10),
+    maxHeight,
+  );
+  const limit = Math.min(parseInt(searchParams.get("limit") || "3", 10), 5);
+  const maxMinutes = Math.min(
+    parseInt(searchParams.get("maxMinutes") || "30", 10),
+    120,
+  );
+  const showAbsolute = searchParams.get("showAbsolute") === "true";
+  const scale = Math.min(
+    Math.max(parseFloat(searchParams.get("scale") || "1"), 1),
+    3,
+  );
 
   // Device sensor data (optional, passed from ESPHome)
-  const tempParam = searchParams.get('temp');
-  const humidityParam = searchParams.get('humidity');
-  const batteryParam = searchParams.get('battery');
+  const tempParam = searchParams.get("temp");
+  const humidityParam = searchParams.get("humidity");
+  const batteryParam = searchParams.get("battery");
 
   const deviceTemp = tempParam ? parseFloat(tempParam) : null;
   const deviceHumidity = humidityParam ? parseFloat(humidityParam) : null;
   const deviceBattery = batteryParam ? parseFloat(batteryParam) : null;
 
   // Check if we have any device sensor data to display
-  const hasDeviceData = deviceTemp !== null || deviceHumidity !== null || deviceBattery !== null;
+  const hasDeviceData =
+    deviceTemp !== null || deviceHumidity !== null || deviceBattery !== null;
 
   // Sidebar layout: 2/3 timetable + 1/3 weather panel
-  const useSidebar = searchParams.get('sidebar') === 'true' && hasDeviceData;
+  const useSidebar = searchParams.get("sidebar") === "true" && hasDeviceData;
 
   // Timezone for timestamp (e.g., "Australia/Melbourne")
-  const timezone = searchParams.get('tz') || 'UTC';
+  const timezone = searchParams.get("tz") || "UTC";
+
+  // Color inversion for dark mode e-ink displays
+  const invert = true; //searchParams.get('invert') === 'true';
+  const fg = invert ? "#ffffff" : "#000000"; // Foreground (text, borders)
+  const bg = invert ? "#000000" : "#ffffff"; // Background
 
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
   const height = Math.round(baseHeight * scale);
 
   if (!stopsParam) {
-    return new Response('Missing required parameter: stops', { status: 400 });
+    return new Response("Missing required parameter: stops", { status: 400 });
   }
 
   // Load fonts in parallel with departure data
   const stopRequests = parseStops(stopsParam);
-  const [interBoldData, interRegularData, ...stopDataResults] = await Promise.all([
-    interBold,
-    interRegular,
-    ...stopRequests.map(({ mode, stopId, directionIds }) =>
-      fetchStopDepartures(baseUrl, mode, stopId, limit, maxMinutes, directionIds)
-    ),
-  ]);
+  const [interBoldData, interRegularData, ...stopDataResults] =
+    await Promise.all([
+      interBold,
+      interRegular,
+      ...stopRequests.map(({ mode, stopId, directionIds }) =>
+        fetchStopDepartures(
+          baseUrl,
+          mode,
+          stopId,
+          limit,
+          maxMinutes,
+          directionIds,
+        ),
+      ),
+    ]);
 
   const stopData = stopDataResults as StopData[];
   const stopCount = stopData.length;
@@ -252,7 +299,7 @@ export async function GET(request: NextRequest) {
   // Calculate total content rows (headers + departures + gaps)
   const totalDepartures = stopData.reduce(
     (sum, stop) => sum + Math.max(stop.departures.length, 1), // At least 1 for "no departures" message
-    0
+    0,
   );
   const totalHeaders = stopCount;
   const totalGaps = stopCount - 1;
@@ -263,7 +310,7 @@ export async function GET(request: NextRequest) {
   const borderWidth = Math.round(3 * scale);
 
   // Available height after padding and gaps
-  const availableHeight = height - (padding * 2) - (sectionGap * totalGaps);
+  const availableHeight = height - padding * 2 - sectionGap * totalGaps;
 
   // Reserve space for timestamp footer
   const footerHeight = Math.round(16 * scale);
@@ -272,7 +319,7 @@ export async function GET(request: NextRequest) {
   // Headers take ~65% of row height (increased for readability), departures take full row height
   // Total "row units": headers count as 0.65, departures count as 1.0
   const headerRatio = 0.65;
-  const totalRowUnits = (totalHeaders * headerRatio) + totalDepartures;
+  const totalRowUnits = totalHeaders * headerRatio + totalDepartures;
 
   // Calculate row height but cap it to reasonable maximums
   // Max row height: 70px at scale 1 (prevents giant text with few rows)
@@ -280,7 +327,10 @@ export async function GET(request: NextRequest) {
   const maxRowHeight = 70 * scale;
   const minRowHeight = 40 * scale;
   const calculatedRowHeight = availableContentHeight / totalRowUnits;
-  const baseRowHeight = Math.min(Math.max(calculatedRowHeight, minRowHeight), maxRowHeight);
+  const baseRowHeight = Math.min(
+    Math.max(calculatedRowHeight, minRowHeight),
+    maxRowHeight,
+  );
 
   const rowHeight = Math.round(baseRowHeight);
   const headerHeight = Math.round(baseRowHeight * headerRatio);
@@ -292,39 +342,41 @@ export async function GET(request: NextRequest) {
   const fontScale = rowSizeMultiplier * scale;
 
   const fontSize = {
-    modeLabel: Math.round(20 * fontScale),      // Increased for header readability
-    stopName: Math.round(18 * fontScale),       // Increased for header readability
+    modeLabel: Math.round(20 * fontScale), // Increased for header readability
+    stopName: Math.round(18 * fontScale), // Increased for header readability
     routeNumber: Math.round(26 * fontScale),
     destination: Math.round(18 * fontScale),
     trainDestination: Math.round(22 * fontScale), // Larger for trains (no route number)
-    platform: Math.round(16 * fontScale),       // Increased for bolder badges
+    platform: Math.round(16 * fontScale), // Increased for bolder badges
     time: Math.round(30 * fontScale),
     message: Math.round(16 * fontScale),
-    timestamp: Math.round(18 * fontScale),      // Footer text (larger for e-ink readability)
+    timestamp: Math.round(18 * fontScale), // Footer text (larger for e-ink readability)
   };
 
   const headerPadding = Math.round(6 * scale);
 
   // Route number width scales with font and orientation
-  const routeNumWidth = Math.round(isPortrait ? 60 * fontScale : 72 * fontScale);
+  const routeNumWidth = Math.round(
+    isPortrait ? 60 * fontScale : 72 * fontScale,
+  );
   const timeWidth = Math.round(isPortrait ? 70 * fontScale : 90 * fontScale);
 
   // Generate timestamp for footer (in requested timezone)
   const now = new Date();
   let timestamp: string;
   try {
-    timestamp = now.toLocaleTimeString('en-AU', {
+    timestamp = now.toLocaleTimeString("en-AU", {
       timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
+      hour: "2-digit",
+      minute: "2-digit",
       hour12: false,
     });
   } catch {
     // Invalid timezone, fall back to UTC
-    timestamp = now.toLocaleTimeString('en-AU', {
-      timeZone: 'UTC',
-      hour: '2-digit',
-      minute: '2-digit',
+    timestamp = now.toLocaleTimeString("en-AU", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
       hour12: false,
     });
   }
@@ -344,216 +396,222 @@ export async function GET(request: NextRequest) {
   const timetableContent = (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: useSidebar ? `${mainWidth}px` : '100%',
-        height: '100%',
+        display: "flex",
+        flexDirection: "column",
+        width: useSidebar ? `${mainWidth}px` : "100%",
+        height: "100%",
         padding: `${padding}px`,
       }}
     >
       {stopData.map((stop, stopIndex) => (
+        <div
+          key={`${stop.mode}-${stop.stopId}`}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : "0",
+          }}
+        >
+          {/* Stop header */}
           <div
-            key={`${stop.mode}-${stop.stopId}`}
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : '0',
+              display: "flex",
+              alignItems: "center",
+              backgroundColor: fg,
+              color: bg,
+              padding: `0 ${padding + 4}px`,
+              height: `${headerHeight}px`,
             }}
           >
-            {/* Stop header */}
-            <div
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                backgroundColor: '#000000',
-                color: '#ffffff',
-                padding: `0 ${padding + 4}px`,
-                height: `${headerHeight}px`,
+                fontWeight: 700,
+                fontSize: `${fontSize.modeLabel}px`,
+                letterSpacing: "0.08em",
+                marginRight: `${Math.round(12 * fontScale)}px`,
               }}
             >
-              <span
-                style={{
-                  fontWeight: 700,
-                  fontSize: `${fontSize.modeLabel}px`,
-                  letterSpacing: '0.08em',
-                  marginRight: `${Math.round(12 * fontScale)}px`,
-                }}
-              >
-                {getModeLabel(stop.mode)}
-              </span>
-              <span
-                style={{
-                  fontSize: `${fontSize.stopName}px`,
-                  fontWeight: 400,
-                  opacity: 0.9,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {stop.stopName}
-              </span>
+              {getModeLabel(stop.mode)}
+            </span>
+            <span
+              style={{
+                fontSize: `${fontSize.stopName}px`,
+                fontWeight: 400,
+                opacity: 0.9,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {stop.stopName}
+            </span>
+          </div>
+
+          {/* Departures */}
+          {stop.error ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: `${rowHeight}px`,
+                fontSize: `${fontSize.message}px`,
+                fontWeight: 400,
+                color: fg,
+              }}
+            >
+              {stop.error}
             </div>
+          ) : stop.departures.length === 0 ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: `${rowHeight}px`,
+                fontSize: `${fontSize.message}px`,
+                fontWeight: 400,
+                color: fg,
+              }}
+            >
+              No departures
+            </div>
+          ) : (
+            stop.departures.map((departure, depIndex) => {
+              const timeInfo = formatDepartureTime(
+                departure.scheduledTime,
+                departure.estimatedTime,
+                showAbsolute,
+              );
+              const isDeparting = timeInfo.display === "now";
+              const isTrain = departure.mode === "train";
+              const isExpress =
+                departure.expressStopCount && departure.expressStopCount > 0;
+              const isLastInSection = depIndex === stop.departures.length - 1;
 
-            {/* Departures */}
-            {stop.error ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: `${rowHeight}px`,
-                  fontSize: `${fontSize.message}px`,
-                  fontWeight: 400,
-                  color: '#000000',
-                }}
-              >
-                {stop.error}
-              </div>
-            ) : stop.departures.length === 0 ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: `${rowHeight}px`,
-                  fontSize: `${fontSize.message}px`,
-                  fontWeight: 400,
-                  color: '#000000',
-                }}
-              >
-                No departures
-              </div>
-            ) : (
-              stop.departures.map((departure, depIndex) => {
-                const timeInfo = formatDepartureTime(
-                  departure.scheduledTime,
-                  departure.estimatedTime,
-                  showAbsolute
-                );
-                const isDeparting = timeInfo.display === 'now';
-                const isTrain = departure.mode === 'train';
-                const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
-                const isLastInSection = depIndex === stop.departures.length - 1;
-
-                return (
-                  <div
-                    key={departure.id || depIndex}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      height: `${rowHeight}px`,
-                      padding: `0 ${padding + 4}px`,
-                      borderTop: isDeparting ? `${borderWidth}px solid #ffffff` : 'none',
-                      borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
-                      backgroundColor: isDeparting ? '#000000' : '#ffffff',
-                      color: isDeparting ? '#ffffff' : '#000000',
-                    }}
-                  >
-                    {/* Route number - hide for trains (redundant with destination) */}
-                    {!isTrain && (
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontSize: `${fontSize.routeNumber}px`,
-                          width: `${routeNumWidth}px`,
-                          textAlign: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {departure.routeName}
-                      </span>
-                    )}
-
-                    {/* Destination - larger font for trains since they have no route number */}
+              return (
+                <div
+                  key={departure.id || depIndex}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    height: `${rowHeight}px`,
+                    padding: `0 ${padding + 4}px`,
+                    borderTop: isDeparting
+                      ? `${borderWidth}px solid ${bg}`
+                      : "none",
+                    borderBottom: isLastInSection
+                      ? "none"
+                      : `${borderWidth}px solid ${fg}`,
+                    backgroundColor: isDeparting ? fg : bg,
+                    color: isDeparting ? bg : fg,
+                  }}
+                >
+                  {/* Route number - hide for trains (redundant with destination) */}
+                  {!isTrain && (
                     <span
                       style={{
-                        flex: 1,
-                        fontSize: `${isTrain ? fontSize.trainDestination : fontSize.destination}px`,
-                        fontWeight: isTrain ? 500 : 400,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
-                        marginRight: `${Math.round(8 * fontScale)}px`,
-                      }}
-                    >
-                      {departure.destination}
-                    </span>
-
-                    {/* Express indicator */}
-                    {isExpress && (
-                      <span
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: `${fontSize.destination}px`,
-                          fontWeight: 700,
-                          padding: `${Math.round(2 * fontScale)}px 0`,
-                          border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                          marginRight: `${Math.round(8 * fontScale)}px`,
-                          minWidth: `${Math.round(28 * fontScale)}px`,
-                          flexShrink: 0,
-                        }}
-                      >
-                        E
-                      </span>
-                    )}
-
-                    {/* Platform */}
-                    {departure.platform && (
-                      <span
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: `${fontSize.destination}px`,
-                          border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                          padding: `${Math.round(2 * fontScale)}px 0`,
-                          fontWeight: 700,
-                          marginRight: `${Math.round(8 * fontScale)}px`,
-                          minWidth: `${Math.round(28 * fontScale)}px`,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {departure.platform}
-                      </span>
-                    )}
-
-                    {/* Time */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        justifyContent: 'flex-end',
-                        minWidth: `${timeWidth}px`,
+                        fontWeight: 700,
+                        fontSize: `${fontSize.routeNumber}px`,
+                        width: `${routeNumWidth}px`,
+                        textAlign: "center",
                         flexShrink: 0,
                       }}
                     >
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontSize: `${fontSize.time}px`,
-                        }}
-                      >
-                        {timeInfo.display}
-                      </span>
-                    </div>
+                      {departure.routeName}
+                    </span>
+                  )}
+
+                  {/* Destination - larger font for trains since they have no route number */}
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: `${isTrain ? fontSize.trainDestination : fontSize.destination}px`,
+                      fontWeight: isTrain ? 500 : 400,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginLeft: isTrain
+                        ? "0"
+                        : `${Math.round(8 * fontScale)}px`,
+                      marginRight: `${Math.round(8 * fontScale)}px`,
+                    }}
+                  >
+                    {departure.destination}
+                  </span>
+
+                  {/* Express indicator */}
+                  {isExpress && (
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: `${fontSize.destination}px`,
+                        fontWeight: 700,
+                        padding: `${Math.round(2 * fontScale)}px 0`,
+                        border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? bg : fg}`,
+                        marginRight: `${Math.round(8 * fontScale)}px`,
+                        minWidth: `${Math.round(28 * fontScale)}px`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      E
+                    </span>
+                  )}
+
+                  {/* Platform */}
+                  {departure.platform && (
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: `${fontSize.destination}px`,
+                        border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? bg : fg}`,
+                        padding: `${Math.round(2 * fontScale)}px 0`,
+                        fontWeight: 700,
+                        marginRight: `${Math.round(8 * fontScale)}px`,
+                        minWidth: `${Math.round(28 * fontScale)}px`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {departure.platform}
+                    </span>
+                  )}
+
+                  {/* Time */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      justifyContent: "flex-end",
+                      minWidth: `${timeWidth}px`,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: `${fontSize.time}px`,
+                      }}
+                    >
+                      {timeInfo.display}
+                    </span>
                   </div>
-                );
-              })
-            )}
-          </div>
-        )
-      )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ))}
 
       {/* Footer with timestamp (and device data if not using sidebar) */}
       <div
         style={{
-          display: 'flex',
-          justifyContent: useSidebar ? 'flex-end' : 'space-between',
-          alignItems: 'flex-end',
+          display: "flex",
+          justifyContent: useSidebar ? "flex-end" : "space-between",
+          alignItems: "flex-end",
           flex: 1,
           paddingTop: `${Math.round(4 * scale)}px`,
         }}
@@ -562,25 +620,23 @@ export async function GET(request: NextRequest) {
         {!useSidebar && hasDeviceData ? (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: `${Math.round(12 * scale)}px`,
               fontSize: `${fontSize.timestamp}px`,
-              color: '#000000',
+              color: fg,
               fontWeight: 400,
             }}
           >
-            {deviceTemp !== null && (
-              <span>{Math.round(deviceTemp)}°C</span>
-            )}
+            {deviceTemp !== null && <span>{Math.round(deviceTemp)}°C</span>}
             {deviceHumidity !== null && (
               <span>{Math.round(deviceHumidity)}%</span>
             )}
             {deviceBattery !== null && (
               <span
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
+                  display: "flex",
+                  alignItems: "center",
                   gap: `${Math.round(4 * scale)}px`,
                 }}
               >
@@ -596,24 +652,19 @@ export async function GET(request: NextRequest) {
                     width="13"
                     height="9"
                     rx="1.5"
-                    stroke="#000000"
+                    stroke={fg}
                     strokeWidth="1"
                   />
-                  <rect
-                    x="14"
-                    y="3"
-                    width="2"
-                    height="4"
-                    rx="0.5"
-                    fill="#000000"
-                  />
+                  <rect x="14" y="3" width="2" height="4" rx="0.5" fill={fg} />
                   <rect
                     x="2"
                     y="2"
-                    width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+                    width={Math.round(
+                      (10 * Math.min(deviceBattery, 100)) / 100,
+                    )}
                     height="6"
                     rx="0.5"
-                    fill="#000000"
+                    fill={fg}
                   />
                 </svg>
                 {Math.round(deviceBattery)}%
@@ -628,11 +679,11 @@ export async function GET(request: NextRequest) {
         {!useSidebar && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: `${Math.round(6 * scale)}px`,
               fontSize: `${fontSize.timestamp}px`,
-              color: '#000000',
+              color: fg,
               fontWeight: 400,
             }}
           >
@@ -642,16 +693,10 @@ export async function GET(request: NextRequest) {
               viewBox="0 0 16 16"
               fill="none"
             >
-              <circle
-                cx="8"
-                cy="8"
-                r="7"
-                stroke="#000000"
-                strokeWidth="1.5"
-              />
+              <circle cx="8" cy="8" r="7" stroke={fg} strokeWidth="1.5" />
               <path
                 d="M8 4V8L11 10"
-                stroke="#000000"
+                stroke={fg}
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -668,21 +713,21 @@ export async function GET(request: NextRequest) {
   const sidebarContent = useSidebar ? (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         width: `${sidebarWidth}px`,
-        height: '100%',
-        borderLeft: `${Math.round(3 * scale)}px solid #000000`,
+        height: "100%",
+        borderLeft: `${Math.round(3 * scale)}px solid ${fg}`,
         padding: `${padding}px`,
       }}
     >
       {/* Weather data (centered, large) */}
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
           flex: 1,
           gap: `${Math.round(16 * scale)}px`,
         }}
@@ -691,9 +736,9 @@ export async function GET(request: NextRequest) {
         {deviceTemp !== null && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'center',
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
             }}
           >
             <span
@@ -701,7 +746,7 @@ export async function GET(request: NextRequest) {
                 fontSize: `${sidebarFontSize.temp}px`,
                 fontWeight: 700,
                 lineHeight: 1,
-                color: '#000000',
+                color: fg,
               }}
             >
               {Math.round(deviceTemp)}
@@ -711,7 +756,7 @@ export async function GET(request: NextRequest) {
                 fontSize: `${Math.round(sidebarFontSize.temp * 0.4)}px`,
                 fontWeight: 400,
                 marginTop: `${Math.round(8 * scale)}px`,
-                color: '#000000',
+                color: fg,
               }}
             >
               °C
@@ -723,9 +768,9 @@ export async function GET(request: NextRequest) {
         {deviceHumidity !== null && (
           <div
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
             }}
           >
             <span
@@ -733,7 +778,7 @@ export async function GET(request: NextRequest) {
                 fontSize: `${sidebarFontSize.humidity}px`,
                 fontWeight: 700,
                 lineHeight: 1,
-                color: '#000000',
+                color: fg,
               }}
             >
               {Math.round(deviceHumidity)}%
@@ -742,7 +787,7 @@ export async function GET(request: NextRequest) {
               style={{
                 fontSize: `${sidebarFontSize.label}px`,
                 fontWeight: 400,
-                color: '#000000',
+                color: fg,
                 marginTop: `${Math.round(4 * scale)}px`,
               }}
             >
@@ -755,19 +800,19 @@ export async function GET(request: NextRequest) {
       {/* Footer with timestamp and battery */}
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           fontSize: `${fontSize.timestamp}px`,
-          color: '#000000',
+          color: fg,
           fontWeight: 400,
         }}
       >
         {/* Timestamp with clock icon (left side) */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: `${Math.round(6 * scale)}px`,
           }}
         >
@@ -777,16 +822,10 @@ export async function GET(request: NextRequest) {
             viewBox="0 0 16 16"
             fill="none"
           >
-            <circle
-              cx="8"
-              cy="8"
-              r="7"
-              stroke="#000000"
-              strokeWidth="1.5"
-            />
+            <circle cx="8" cy="8" r="7" stroke={fg} strokeWidth="1.5" />
             <path
               d="M8 4V8L11 10"
-              stroke="#000000"
+              stroke={fg}
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -799,8 +838,8 @@ export async function GET(request: NextRequest) {
         {deviceBattery !== null && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: `${Math.round(6 * scale)}px`,
             }}
           >
@@ -816,24 +855,17 @@ export async function GET(request: NextRequest) {
                 width="13"
                 height="9"
                 rx="1.5"
-                stroke="#000000"
+                stroke={fg}
                 strokeWidth="1"
               />
-              <rect
-                x="14"
-                y="3"
-                width="2"
-                height="4"
-                rx="0.5"
-                fill="#000000"
-              />
+              <rect x="14" y="3" width="2" height="4" rx="0.5" fill={fg} />
               <rect
                 x="2"
                 y="2"
-                width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+                width={Math.round((10 * Math.min(deviceBattery, 100)) / 100)}
                 height="6"
                 rx="0.5"
-                fill="#000000"
+                fill={fg}
               />
             </svg>
             {Math.round(deviceBattery)}%
@@ -844,41 +876,39 @@ export async function GET(request: NextRequest) {
   ) : null;
 
   return new ImageResponse(
-    (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          width: '100%',
-          height: '100%',
-          backgroundColor: '#ffffff',
-          fontFamily: 'Inter, sans-serif',
-        }}
-      >
-        {timetableContent}
-        {sidebarContent}
-      </div>
-    ),
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        width: "100%",
+        height: "100%",
+        backgroundColor: bg,
+        fontFamily: "Inter, sans-serif",
+      }}
+    >
+      {timetableContent}
+      {sidebarContent}
+    </div>,
     {
       width,
       height,
       fonts: [
         {
-          name: 'Inter',
+          name: "Inter",
           data: interBoldData,
-          style: 'normal',
+          style: "normal",
           weight: 700,
         },
         {
-          name: 'Inter',
+          name: "Inter",
           data: interRegularData,
-          style: 'normal',
+          style: "normal",
           weight: 400,
         },
       ],
       headers: {
-        'Cache-Control': 'public, max-age=30',
+        "Cache-Control": "public, max-age=30",
       },
-    }
+    },
   );
 }
