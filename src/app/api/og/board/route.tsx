@@ -228,9 +228,13 @@ export async function GET(request: NextRequest) {
   // Available height after padding and gaps
   const availableHeight = height - (padding * 2) - (sectionGap * totalGaps);
 
-  // Headers take ~55% of row height, departures take full row height
-  // Total "row units": headers count as 0.55, departures count as 1.0
-  const headerRatio = 0.55;
+  // Reserve space for timestamp footer
+  const footerHeight = Math.round(16 * scale);
+  const availableContentHeight = availableHeight - footerHeight;
+
+  // Headers take ~65% of row height (increased for readability), departures take full row height
+  // Total "row units": headers count as 0.65, departures count as 1.0
+  const headerRatio = 0.65;
   const totalRowUnits = (totalHeaders * headerRatio) + totalDepartures;
 
   // Calculate row height but cap it to reasonable maximums
@@ -238,7 +242,7 @@ export async function GET(request: NextRequest) {
   // Min row height: 40px at scale 1 (ensures readability with many rows)
   const maxRowHeight = 70 * scale;
   const minRowHeight = 40 * scale;
-  const calculatedRowHeight = availableHeight / totalRowUnits;
+  const calculatedRowHeight = availableContentHeight / totalRowUnits;
   const baseRowHeight = Math.min(Math.max(calculatedRowHeight, minRowHeight), maxRowHeight);
 
   const rowHeight = Math.round(baseRowHeight);
@@ -251,13 +255,15 @@ export async function GET(request: NextRequest) {
   const fontScale = rowSizeMultiplier * scale;
 
   const fontSize = {
-    modeLabel: Math.round(18 * fontScale),
-    stopName: Math.round(16 * fontScale),
+    modeLabel: Math.round(20 * fontScale),      // Increased for header readability
+    stopName: Math.round(18 * fontScale),       // Increased for header readability
     routeNumber: Math.round(26 * fontScale),
     destination: Math.round(18 * fontScale),
-    platform: Math.round(14 * fontScale),
+    trainDestination: Math.round(22 * fontScale), // Larger for trains (no route number)
+    platform: Math.round(16 * fontScale),       // Increased for bolder badges
     time: Math.round(30 * fontScale),
     message: Math.round(16 * fontScale),
+    timestamp: Math.round(11 * fontScale),      // Small footer text
   };
 
   const headerPadding = Math.round(6 * scale);
@@ -265,6 +271,10 @@ export async function GET(request: NextRequest) {
   // Route number width scales with font and orientation
   const routeNumWidth = Math.round(isPortrait ? 60 * fontScale : 72 * fontScale);
   const timeWidth = Math.round(isPortrait ? 70 * fontScale : 90 * fontScale);
+
+  // Generate timestamp for footer
+  const now = new Date();
+  const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   return new ImageResponse(
     (
@@ -331,7 +341,6 @@ export async function GET(request: NextRequest) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     height: `${rowHeight}px`,
-                    borderBottom: `${borderWidth}px solid #000000`,
                     fontSize: `${fontSize.message}px`,
                     fontWeight: 400,
                     color: '#444444',
@@ -346,7 +355,6 @@ export async function GET(request: NextRequest) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     height: `${rowHeight}px`,
-                    borderBottom: `${borderWidth}px solid #000000`,
                     fontSize: `${fontSize.message}px`,
                     fontWeight: 400,
                     color: '#444444',
@@ -364,6 +372,7 @@ export async function GET(request: NextRequest) {
                   const isDeparting = timeInfo.display === 'now';
                   const isTrain = departure.mode === 'train';
                   const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
+                  const isLastInSection = depIndex === stop.departures.length - 1;
 
                   return (
                     <div
@@ -373,7 +382,7 @@ export async function GET(request: NextRequest) {
                         alignItems: 'center',
                         height: `${rowHeight}px`,
                         padding: `0 ${padding + 4}px`,
-                        borderBottom: `${borderWidth}px solid #000000`,
+                        borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
                         backgroundColor: isDeparting ? '#000000' : '#ffffff',
                         color: isDeparting ? '#ffffff' : '#000000',
                       }}
@@ -410,12 +419,12 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
-                      {/* Destination */}
+                      {/* Destination - larger font for trains since they have no route number */}
                       <span
                         style={{
                           flex: 1,
-                          fontSize: `${fontSize.destination}px`,
-                          fontWeight: 400,
+                          fontSize: `${isTrain ? fontSize.trainDestination : fontSize.destination}px`,
+                          fontWeight: isTrain ? 500 : 400,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -426,19 +435,20 @@ export async function GET(request: NextRequest) {
                         {departure.destination}
                       </span>
 
-                      {/* Platform */}
+                      {/* Platform - bolder badge for visibility */}
                       {departure.platform && (
                         <span
                           style={{
                             fontSize: `${fontSize.platform}px`,
-                            border: `${borderWidth}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
+                            backgroundColor: isDeparting ? '#ffffff' : '#000000',
+                            color: isDeparting ? '#000000' : '#ffffff',
+                            padding: `${Math.round(3 * fontScale)}px ${Math.round(8 * fontScale)}px`,
                             fontWeight: 700,
                             marginRight: `${Math.round(8 * fontScale)}px`,
                             flexShrink: 0,
                           }}
                         >
-                          P{departure.platform}
+                          {departure.platform}
                         </span>
                       )}
 
@@ -452,68 +462,21 @@ export async function GET(request: NextRequest) {
                           flexShrink: 0,
                         }}
                       >
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: `${fontSize.time}px`,
-                          }}
-                        >
-                          {timeInfo.display}
-                        </span>
-                        {/* Data quality indicator bar */}
                         <div
                           style={{
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'baseline',
                             gap: `${Math.round(4 * fontScale)}px`,
-                            marginTop: `${Math.round(2 * fontScale)}px`,
                           }}
                         >
-                          {timeInfo.isRealTime ? (
-                            /* Live data: solid bar */
-                            <div
-                              style={{
-                                display: 'flex',
-                                width: `${Math.round(24 * fontScale)}px`,
-                                height: `${Math.round(2 * fontScale)}px`,
-                                backgroundColor: isDeparting ? '#ffffff' : '#000000',
-                                borderRadius: `${Math.round(1 * fontScale)}px`,
-                              }}
-                            />
-                          ) : monoMode ? (
-                            /* Scheduled only (mono mode): thin outline bar for 1-bit displays */
-                            <div
-                              style={{
-                                display: 'flex',
-                                width: `${Math.round(24 * fontScale)}px`,
-                                height: `${Math.round(2 * fontScale)}px`,
-                                border: `1px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                                backgroundColor: 'transparent',
-                                borderRadius: `${Math.round(1 * fontScale)}px`,
-                              }}
-                            />
-                          ) : (
-                            /* Scheduled only: dotted bar (3 segments) with gray */
-                            <div
-                              style={{
-                                display: 'flex',
-                                gap: `${Math.round(2 * fontScale)}px`,
-                              }}
-                            >
-                              {[0, 1, 2].map((i) => (
-                                <div
-                                  key={i}
-                                  style={{
-                                    display: 'flex',
-                                    width: `${Math.round(6 * fontScale)}px`,
-                                    height: `${Math.round(2 * fontScale)}px`,
-                                    backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
-                                    borderRadius: `${Math.round(1 * fontScale)}px`,
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              fontSize: `${fontSize.time}px`,
+                            }}
+                          >
+                            {timeInfo.display}
+                          </span>
                           {/* Show delay info if significant (only for real-time) */}
                           {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
                             <span
@@ -522,8 +485,61 @@ export async function GET(request: NextRequest) {
                                 fontWeight: 500,
                               }}
                             >
-                              {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
+                              {timeInfo.delayMinutes > 0 ? `+${timeInfo.delayMinutes}` : timeInfo.delayMinutes}
                             </span>
+                          )}
+                        </div>
+                        {/* Data quality indicator bar - full width under time */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            width: '100%',
+                            marginTop: `${Math.round(3 * fontScale)}px`,
+                          }}
+                        >
+                          {timeInfo.isRealTime ? (
+                            /* Live data: solid bar spanning full width */
+                            <div
+                              style={{
+                                display: 'flex',
+                                width: '100%',
+                                height: `${Math.round(3 * fontScale)}px`,
+                                backgroundColor: isDeparting ? '#ffffff' : '#000000',
+                              }}
+                            />
+                          ) : monoMode ? (
+                            /* Scheduled only (mono mode): thin outline bar for 1-bit displays */
+                            <div
+                              style={{
+                                display: 'flex',
+                                width: '100%',
+                                height: `${Math.round(3 * fontScale)}px`,
+                                border: `1px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                                backgroundColor: 'transparent',
+                              }}
+                            />
+                          ) : (
+                            /* Scheduled only: dotted bar spanning full width */
+                            <div
+                              style={{
+                                display: 'flex',
+                                width: '100%',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              {[0, 1, 2, 3, 4].map((i) => (
+                                <div
+                                  key={i}
+                                  style={{
+                                    display: 'flex',
+                                    flex: 1,
+                                    height: `${Math.round(3 * fontScale)}px`,
+                                    backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
+                                    marginRight: i < 4 ? `${Math.round(2 * fontScale)}px` : '0',
+                                  }}
+                                />
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -534,6 +550,27 @@ export async function GET(request: NextRequest) {
             </div>
           )
         )}
+
+        {/* Timestamp footer */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'flex-end',
+            flex: 1,
+            paddingTop: `${Math.round(4 * scale)}px`,
+          }}
+        >
+          <span
+            style={{
+              fontSize: `${fontSize.timestamp}px`,
+              color: '#666666',
+              fontWeight: 400,
+            }}
+          >
+            Updated {timestamp}
+          </span>
+        </div>
       </div>
     ),
     {
