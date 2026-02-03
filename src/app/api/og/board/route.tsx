@@ -15,8 +15,6 @@
  *   - maxMinutes: time window in minutes (default 30, max 120)
  *   - showAbsolute: show absolute times instead of relative (default false)
  *   - scale: render at higher resolution for crispness (default 1, max 3)
- *   - mono: pure monochrome mode for 1-bit e-ink displays (default false)
- *           When true, uses dithered patterns instead of gray for scheduled indicators
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -191,7 +189,6 @@ export async function GET(request: NextRequest) {
   const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
   const showAbsolute = searchParams.get('showAbsolute') === 'true';
   const scale = Math.min(Math.max(parseFloat(searchParams.get('scale') || '1'), 1), 3);
-  const monoMode = searchParams.get('mono') === 'true';
 
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
@@ -437,14 +434,13 @@ export async function GET(request: NextRequest) {
                         {departure.destination}
                       </span>
 
-                      {/* Platform - bolder badge for visibility */}
+                      {/* Platform */}
                       {departure.platform && (
                         <span
                           style={{
                             fontSize: `${fontSize.platform}px`,
-                            backgroundColor: isDeparting ? '#ffffff' : '#000000',
-                            color: isDeparting ? '#000000' : '#ffffff',
-                            padding: `${Math.round(3 * fontScale)}px ${Math.round(8 * fontScale)}px`,
+                            border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
                             fontWeight: 700,
                             marginRight: `${Math.round(8 * fontScale)}px`,
                             flexShrink: 0,
@@ -454,97 +450,36 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
-                      {/* Time with data quality indicator */}
+                      {/* Time */}
                       <div
                         style={{
                           display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-end',
-                          width: `${timeWidth}px`,
+                          alignItems: 'baseline',
+                          justifyContent: 'flex-end',
+                          minWidth: `${timeWidth}px`,
                           flexShrink: 0,
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            display: 'flex',
-                            alignItems: 'baseline',
-                            justifyContent: 'flex-end',
-                            width: `${timeWidth}px`,
+                            fontWeight: 700,
+                            fontSize: `${fontSize.time}px`,
                           }}
                         >
+                          {timeInfo.display}
+                        </span>
+                        {/* Show delay info if significant (only for real-time) */}
+                        {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
                           <span
                             style={{
-                              fontWeight: 700,
-                              fontSize: `${fontSize.time}px`,
+                              fontSize: `${Math.round(12 * fontScale)}px`,
+                              fontWeight: 500,
+                              marginLeft: `${Math.round(4 * fontScale)}px`,
                             }}
                           >
-                            {timeInfo.display}
+                            {timeInfo.delayMinutes > 0 ? `+${timeInfo.delayMinutes}` : timeInfo.delayMinutes}
                           </span>
-                          {/* Show delay info if significant (only for real-time) */}
-                          {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
-                            <span
-                              style={{
-                                fontSize: `${Math.round(12 * fontScale)}px`,
-                                fontWeight: 500,
-                                marginLeft: `${Math.round(4 * fontScale)}px`,
-                              }}
-                            >
-                              {timeInfo.delayMinutes > 0 ? `+${timeInfo.delayMinutes}` : timeInfo.delayMinutes}
-                            </span>
-                          )}
-                        </div>
-                        {/* Data quality indicator bar - full width under time */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            width: `${timeWidth}px`,
-                            marginTop: `${Math.round(3 * fontScale)}px`,
-                          }}
-                        >
-                          {timeInfo.isRealTime ? (
-                            /* Live data: solid bar */
-                            <div
-                              style={{
-                                display: 'flex',
-                                width: `${timeWidth}px`,
-                                height: `${Math.round(3 * fontScale)}px`,
-                                backgroundColor: isDeparting ? '#ffffff' : '#000000',
-                              }}
-                            />
-                          ) : monoMode ? (
-                            /* Scheduled only (mono mode): thin outline bar for 1-bit displays */
-                            <div
-                              style={{
-                                display: 'flex',
-                                width: `${timeWidth}px`,
-                                height: `${Math.round(3 * fontScale)}px`,
-                                border: `1px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                                backgroundColor: 'transparent',
-                              }}
-                            />
-                          ) : (
-                            /* Scheduled only: dotted bar */
-                            <div
-                              style={{
-                                display: 'flex',
-                                width: `${timeWidth}px`,
-                                gap: `${Math.round(2 * fontScale)}px`,
-                              }}
-                            >
-                              {[0, 1, 2, 3, 4].map((i) => (
-                                <div
-                                  key={i}
-                                  style={{
-                                    display: 'flex',
-                                    width: `${Math.round((timeWidth - 8 * fontScale) / 5)}px`,
-                                    height: `${Math.round(3 * fontScale)}px`,
-                                    backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   );
