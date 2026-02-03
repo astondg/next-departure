@@ -102,8 +102,9 @@ export class PtvClient implements TransitProvider {
       headers: {
         Accept: 'application/json',
       },
-      // Cache for 30 seconds to avoid hammering the API
-      next: { revalidate: 30 },
+      // Short cache to balance freshness with API rate limits
+      // Using 15 seconds to keep data reasonably fresh
+      next: { revalidate: 15 },
     });
 
     if (!response.ok) {

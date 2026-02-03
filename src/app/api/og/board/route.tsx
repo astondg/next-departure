@@ -107,7 +107,9 @@ async function fetchStopDepartures(
       maxMinutes: String(maxMinutes),
     });
 
-    const response = await fetch(`${baseUrl}/api/departures?${params.toString()}`);
+    const response = await fetch(`${baseUrl}/api/departures?${params.toString()}`, {
+      cache: 'no-store', // Always fetch fresh data for the image
+    });
 
     if (!response.ok) {
       return {
@@ -458,7 +460,7 @@ export async function GET(request: NextRequest) {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'flex-end',
-                          minWidth: `${timeWidth}px`,
+                          width: `${timeWidth}px`,
                           flexShrink: 0,
                         }}
                       >
@@ -466,7 +468,8 @@ export async function GET(request: NextRequest) {
                           style={{
                             display: 'flex',
                             alignItems: 'baseline',
-                            gap: `${Math.round(4 * fontScale)}px`,
+                            justifyContent: 'flex-end',
+                            width: `${timeWidth}px`,
                           }}
                         >
                           <span
@@ -483,6 +486,7 @@ export async function GET(request: NextRequest) {
                               style={{
                                 fontSize: `${Math.round(12 * fontScale)}px`,
                                 fontWeight: 500,
+                                marginLeft: `${Math.round(4 * fontScale)}px`,
                               }}
                             >
                               {timeInfo.delayMinutes > 0 ? `+${timeInfo.delayMinutes}` : timeInfo.delayMinutes}
@@ -493,16 +497,16 @@ export async function GET(request: NextRequest) {
                         <div
                           style={{
                             display: 'flex',
-                            width: '100%',
+                            width: `${timeWidth}px`,
                             marginTop: `${Math.round(3 * fontScale)}px`,
                           }}
                         >
                           {timeInfo.isRealTime ? (
-                            /* Live data: solid bar spanning full width */
+                            /* Live data: solid bar */
                             <div
                               style={{
                                 display: 'flex',
-                                width: '100%',
+                                width: `${timeWidth}px`,
                                 height: `${Math.round(3 * fontScale)}px`,
                                 backgroundColor: isDeparting ? '#ffffff' : '#000000',
                               }}
@@ -512,19 +516,19 @@ export async function GET(request: NextRequest) {
                             <div
                               style={{
                                 display: 'flex',
-                                width: '100%',
+                                width: `${timeWidth}px`,
                                 height: `${Math.round(3 * fontScale)}px`,
                                 border: `1px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                                 backgroundColor: 'transparent',
                               }}
                             />
                           ) : (
-                            /* Scheduled only: dotted bar spanning full width */
+                            /* Scheduled only: dotted bar */
                             <div
                               style={{
                                 display: 'flex',
-                                width: '100%',
-                                justifyContent: 'space-between',
+                                width: `${timeWidth}px`,
+                                gap: `${Math.round(2 * fontScale)}px`,
                               }}
                             >
                               {[0, 1, 2, 3, 4].map((i) => (
@@ -532,10 +536,9 @@ export async function GET(request: NextRequest) {
                                   key={i}
                                   style={{
                                     display: 'flex',
-                                    flex: 1,
+                                    width: `${Math.round((timeWidth - 8 * fontScale) / 5)}px`,
                                     height: `${Math.round(3 * fontScale)}px`,
                                     backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
-                                    marginRight: i < 4 ? `${Math.round(2 * fontScale)}px` : '0',
                                   }}
                                 />
                               ))}
