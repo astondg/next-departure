@@ -20,6 +20,7 @@
  *   - battery: battery level percentage from device sensor (optional, e.g., "87")
  *   - sidebar: enable sidebar layout with weather panel (default false, e.g., "true")
  *             When enabled, displays 2/3 timetable + 1/3 weather sidebar
+ *   - tz: timezone for "Updated" timestamp (e.g., "Australia/Melbourne"). Falls back to UTC.
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -224,6 +225,9 @@ export async function GET(request: NextRequest) {
   // Sidebar layout: 2/3 timetable + 1/3 weather panel
   const useSidebar = searchParams.get('sidebar') === 'true' && hasDeviceData;
 
+  // Timezone for timestamp (e.g., "Australia/Melbourne")
+  const timezone = searchParams.get('tz') || 'UTC';
+
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
   const height = Math.round(baseHeight * scale);
@@ -305,19 +309,35 @@ export async function GET(request: NextRequest) {
   const routeNumWidth = Math.round(isPortrait ? 60 * fontScale : 72 * fontScale);
   const timeWidth = Math.round(isPortrait ? 70 * fontScale : 90 * fontScale);
 
-  // Generate timestamp for footer
+  // Generate timestamp for footer (in requested timezone)
   const now = new Date();
-  const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  let timestamp: string;
+  try {
+    timestamp = now.toLocaleTimeString('en-AU', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    // Invalid timezone, fall back to UTC
+    timestamp = now.toLocaleTimeString('en-AU', {
+      timeZone: 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
 
-  // Sidebar dimensions
-  const sidebarWidth = useSidebar ? Math.round(width / 3) : 0;
+  // Sidebar dimensions (1/4 width for tighter layout)
+  const sidebarWidth = useSidebar ? Math.round(width / 4) : 0;
   const mainWidth = useSidebar ? width - sidebarWidth : width;
 
-  // Sidebar-specific font sizes (large for glanceability)
+  // Sidebar-specific font sizes (large for glanceability, sized for 1/4 width)
   const sidebarFontSize = {
-    temp: Math.round(72 * scale),
-    humidity: Math.round(36 * scale),
-    label: Math.round(16 * scale),
+    temp: Math.round(56 * scale),
+    humidity: Math.round(28 * scale),
+    label: Math.round(14 * scale),
   };
 
   // Timetable content (shared between both layouts)
