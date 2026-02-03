@@ -15,6 +15,9 @@
  *   - maxMinutes: time window in minutes (default 30, max 120)
  *   - showAbsolute: show absolute times instead of relative (default false)
  *   - scale: render at higher resolution for crispness (default 1, max 3)
+ *   - temp: temperature in Celsius from device sensor (optional, e.g., "21.5")
+ *   - humidity: relative humidity percentage from device sensor (optional, e.g., "45")
+ *   - battery: battery level percentage from device sensor (optional, e.g., "87")
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -203,6 +206,18 @@ export async function GET(request: NextRequest) {
   const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
   const showAbsolute = searchParams.get('showAbsolute') === 'true';
   const scale = Math.min(Math.max(parseFloat(searchParams.get('scale') || '1'), 1), 3);
+
+  // Device sensor data (optional, passed from ESPHome)
+  const tempParam = searchParams.get('temp');
+  const humidityParam = searchParams.get('humidity');
+  const batteryParam = searchParams.get('battery');
+
+  const deviceTemp = tempParam ? parseFloat(tempParam) : null;
+  const deviceHumidity = humidityParam ? parseFloat(humidityParam) : null;
+  const deviceBattery = batteryParam ? parseFloat(batteryParam) : null;
+
+  // Check if we have any device sensor data to display
+  const hasDeviceData = deviceTemp !== null || deviceHumidity !== null || deviceBattery !== null;
 
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
@@ -499,16 +514,83 @@ export async function GET(request: NextRequest) {
           )
         )}
 
-        {/* Timestamp footer */}
+        {/* Footer with device status and timestamp */}
         <div
           style={{
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             alignItems: 'flex-end',
             flex: 1,
             paddingTop: `${Math.round(4 * scale)}px`,
           }}
         >
+          {/* Device sensor data (left side) */}
+          {hasDeviceData ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: `${Math.round(12 * scale)}px`,
+                fontSize: `${fontSize.timestamp}px`,
+                color: '#666666',
+                fontWeight: 400,
+              }}
+            >
+              {deviceTemp !== null && (
+                <span>{Math.round(deviceTemp)}°C</span>
+              )}
+              {deviceHumidity !== null && (
+                <span>{Math.round(deviceHumidity)}%</span>
+              )}
+              {deviceBattery !== null && (
+                <span
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${Math.round(4 * scale)}px`,
+                  }}
+                >
+                  <svg
+                    width={Math.round(16 * scale)}
+                    height={Math.round(10 * scale)}
+                    viewBox="0 0 16 10"
+                    fill="none"
+                  >
+                    <rect
+                      x="0.5"
+                      y="0.5"
+                      width="13"
+                      height="9"
+                      rx="1.5"
+                      stroke="#666666"
+                      strokeWidth="1"
+                    />
+                    <rect
+                      x="14"
+                      y="3"
+                      width="2"
+                      height="4"
+                      rx="0.5"
+                      fill="#666666"
+                    />
+                    <rect
+                      x="2"
+                      y="2"
+                      width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+                      height="6"
+                      rx="0.5"
+                      fill="#666666"
+                    />
+                  </svg>
+                  {Math.round(deviceBattery)}%
+                </span>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {/* Timestamp (right side) */}
           <span
             style={{
               fontSize: `${fontSize.timestamp}px`,
