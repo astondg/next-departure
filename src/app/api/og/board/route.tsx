@@ -604,16 +604,18 @@ export async function GET(request: NextRequest) {
           <div />
         ) : null}
 
-        {/* Timestamp (right side) */}
-        <span
-          style={{
-            fontSize: `${fontSize.timestamp}px`,
-            color: '#000000',
-            fontWeight: 400,
-          }}
-        >
-          Updated {timestamp}
-        </span>
+        {/* Timestamp (right side) - only when NOT using sidebar */}
+        {!useSidebar && (
+          <span
+            style={{
+              fontSize: `${fontSize.timestamp}px`,
+              color: '#000000',
+              fontWeight: 400,
+            }}
+          >
+            Updated {timestamp}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -706,54 +708,65 @@ export async function GET(request: NextRequest) {
         )}
       </div>
 
-      {/* Battery in footer */}
-      {deviceBattery !== null && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            gap: `${Math.round(6 * scale)}px`,
-            fontSize: `${fontSize.timestamp}px`,
-            color: '#000000',
-            fontWeight: 400,
-          }}
-        >
-          <svg
-            width={Math.round(20 * scale)}
-            height={Math.round(12 * scale)}
-            viewBox="0 0 16 10"
-            fill="none"
+      {/* Footer with timestamp and battery */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: `${fontSize.timestamp}px`,
+          color: '#000000',
+          fontWeight: 400,
+        }}
+      >
+        {/* Timestamp (left side) */}
+        <span>Updated {timestamp}</span>
+
+        {/* Battery (right side) */}
+        {deviceBattery !== null && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${Math.round(6 * scale)}px`,
+            }}
           >
-            <rect
-              x="0.5"
-              y="0.5"
-              width="13"
-              height="9"
-              rx="1.5"
-              stroke="#000000"
-              strokeWidth="1"
-            />
-            <rect
-              x="14"
-              y="3"
-              width="2"
-              height="4"
-              rx="0.5"
-              fill="#000000"
-            />
-            <rect
-              x="2"
-              y="2"
-              width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
-              height="6"
-              rx="0.5"
-              fill="#000000"
-            />
-          </svg>
-          {Math.round(deviceBattery)}%
-        </div>
-      )}
+            <svg
+              width={Math.round(20 * scale)}
+              height={Math.round(12 * scale)}
+              viewBox="0 0 16 10"
+              fill="none"
+            >
+              <rect
+                x="0.5"
+                y="0.5"
+                width="13"
+                height="9"
+                rx="1.5"
+                stroke="#000000"
+                strokeWidth="1"
+              />
+              <rect
+                x="14"
+                y="3"
+                width="2"
+                height="4"
+                rx="0.5"
+                fill="#000000"
+              />
+              <rect
+                x="2"
+                y="2"
+                width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+                height="6"
+                rx="0.5"
+                fill="#000000"
+              />
+            </svg>
+            {Math.round(deviceBattery)}%
+          </div>
+        )}
+      </div>
     </div>
   ) : null;
 
