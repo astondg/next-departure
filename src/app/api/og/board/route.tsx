@@ -15,6 +15,8 @@
  *   - maxMinutes: time window in minutes (default 30, max 120)
  *   - showAbsolute: show absolute times instead of relative (default false)
  *   - scale: render at higher resolution for crispness (default 1, max 3)
+ *   - mono: pure monochrome mode for 1-bit e-ink displays (default false)
+ *           When true, uses dithered patterns instead of gray for scheduled indicators
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -187,6 +189,7 @@ export async function GET(request: NextRequest) {
   const maxMinutes = Math.min(parseInt(searchParams.get('maxMinutes') || '30', 10), 120);
   const showAbsolute = searchParams.get('showAbsolute') === 'true';
   const scale = Math.min(Math.max(parseFloat(searchParams.get('scale') || '1'), 1), 3);
+  const monoMode = searchParams.get('mono') === 'true';
 
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
@@ -428,7 +431,7 @@ export async function GET(request: NextRequest) {
                         <span
                           style={{
                             fontSize: `${fontSize.platform}px`,
-                            border: `${borderWidth}px solid currentColor`,
+                            border: `${borderWidth}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                             padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
                             fontWeight: 700,
                             marginRight: `${Math.round(8 * fontScale)}px`,
@@ -468,17 +471,29 @@ export async function GET(request: NextRequest) {
                         >
                           {timeInfo.isRealTime ? (
                             /* Live data: solid bar */
-                            <span
+                            <div
                               style={{
-                                display: 'inline-block',
+                                display: 'flex',
                                 width: `${Math.round(24 * fontScale)}px`,
                                 height: `${Math.round(2 * fontScale)}px`,
                                 backgroundColor: isDeparting ? '#ffffff' : '#000000',
                                 borderRadius: `${Math.round(1 * fontScale)}px`,
                               }}
                             />
+                          ) : monoMode ? (
+                            /* Scheduled only (mono mode): thin outline bar for 1-bit displays */
+                            <div
+                              style={{
+                                display: 'flex',
+                                width: `${Math.round(24 * fontScale)}px`,
+                                height: `${Math.round(2 * fontScale)}px`,
+                                border: `1px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                                backgroundColor: 'transparent',
+                                borderRadius: `${Math.round(1 * fontScale)}px`,
+                              }}
+                            />
                           ) : (
-                            /* Scheduled only: dotted bar (3 segments) */
+                            /* Scheduled only: dotted bar (3 segments) with gray */
                             <div
                               style={{
                                 display: 'flex',
@@ -486,10 +501,10 @@ export async function GET(request: NextRequest) {
                               }}
                             >
                               {[0, 1, 2].map((i) => (
-                                <span
+                                <div
                                   key={i}
                                   style={{
-                                    display: 'inline-block',
+                                    display: 'flex',
                                     width: `${Math.round(6 * fontScale)}px`,
                                     height: `${Math.round(2 * fontScale)}px`,
                                     backgroundColor: isDeparting ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
