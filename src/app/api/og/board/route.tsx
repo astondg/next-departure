@@ -335,8 +335,8 @@ export async function GET(request: NextRequest) {
 
   // Sidebar-specific font sizes (large for glanceability, sized for 1/4 width)
   const sidebarFontSize = {
-    temp: Math.round(56 * scale),
-    humidity: Math.round(28 * scale),
+    temp: Math.round(64 * scale),
+    humidity: Math.round(32 * scale),
     label: Math.round(14 * scale),
   };
 
@@ -624,17 +624,41 @@ export async function GET(request: NextRequest) {
           <div />
         ) : null}
 
-        {/* Timestamp (right side) - only when NOT using sidebar */}
+        {/* Timestamp with clock icon (right side) - only when NOT using sidebar */}
         {!useSidebar && (
-          <span
+          <div
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${Math.round(6 * scale)}px`,
               fontSize: `${fontSize.timestamp}px`,
               color: '#000000',
               fontWeight: 400,
             }}
           >
-            Updated {timestamp}
-          </span>
+            <svg
+              width={Math.round(16 * scale)}
+              height={Math.round(16 * scale)}
+              viewBox="0 0 16 16"
+              fill="none"
+            >
+              <circle
+                cx="8"
+                cy="8"
+                r="7"
+                stroke="#000000"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M8 4V8L11 10"
+                stroke="#000000"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>{timestamp}</span>
+          </div>
         )}
       </div>
     </div>
@@ -739,8 +763,37 @@ export async function GET(request: NextRequest) {
           fontWeight: 400,
         }}
       >
-        {/* Timestamp (left side) */}
-        <span>Updated {timestamp}</span>
+        {/* Timestamp with clock icon (left side) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: `${Math.round(6 * scale)}px`,
+          }}
+        >
+          <svg
+            width={Math.round(16 * scale)}
+            height={Math.round(16 * scale)}
+            viewBox="0 0 16 16"
+            fill="none"
+          >
+            <circle
+              cx="8"
+              cy="8"
+              r="7"
+              stroke="#000000"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M8 4V8L11 10"
+              stroke="#000000"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span>{timestamp}</span>
+        </div>
 
         {/* Battery (right side) */}
         {deviceBattery !== null && (
