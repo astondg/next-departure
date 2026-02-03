@@ -382,11 +382,7 @@ export async function GET(request: NextRequest) {
                         height: `${rowHeight}px`,
                         padding: `0 ${padding + 4}px`,
                         borderTop: isDeparting ? `${borderWidth}px solid #ffffff` : 'none',
-                        borderBottom: isDeparting
-                          ? `${borderWidth}px solid #ffffff`
-                          : isLastInSection
-                            ? 'none'
-                            : `${borderWidth}px solid #000000`,
+                        borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
                         backgroundColor: isDeparting ? '#000000' : '#ffffff',
                         color: isDeparting ? '#ffffff' : '#000000',
                       }}
@@ -428,9 +424,11 @@ export async function GET(request: NextRequest) {
                           style={{
                             fontSize: `${fontSize.destination}px`,
                             fontWeight: 700,
-                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
+                            padding: `${Math.round(2 * fontScale)}px 0`,
                             border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                             marginRight: `${Math.round(8 * fontScale)}px`,
+                            minWidth: `${Math.round(28 * fontScale)}px`,
+                            textAlign: 'center',
                             flexShrink: 0,
                           }}
                         >
@@ -444,9 +442,11 @@ export async function GET(request: NextRequest) {
                           style={{
                             fontSize: `${fontSize.destination}px`,
                             border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
+                            padding: `${Math.round(2 * fontScale)}px 0`,
                             fontWeight: 700,
                             marginRight: `${Math.round(8 * fontScale)}px`,
+                            minWidth: `${Math.round(28 * fontScale)}px`,
+                            textAlign: 'center',
                             flexShrink: 0,
                           }}
                         >

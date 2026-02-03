@@ -71,7 +71,7 @@ function CompactDepartureRow({
   return (
     <div
       className={`flex items-center gap-2 py-2 px-2 ${
-        isDeparting ? 'bg-black text-white border-y-2 border-white' : ''
+        isDeparting ? 'bg-black text-white border-t-2 border-white' : ''
       } ${isFadingOut ? 'departure-fading-out' : ''}`}
     >
       {/* Route number - only for non-trains */}
@@ -88,14 +88,14 @@ function CompactDepartureRow({
 
       {/* Express indicator */}
       {isExpress && (
-        <span className={`text-sm font-bold px-1.5 border ${isDeparting ? 'border-white' : 'border-current'} flex-shrink-0`}>
+        <span className={`text-sm font-bold border ${isDeparting ? 'border-white' : 'border-current'} flex-shrink-0 min-w-[28px] text-center py-0.5`}>
           E
         </span>
       )}
 
       {/* Platform */}
       {departure.platform && (
-        <span className={`text-sm font-bold border ${isDeparting ? 'border-white' : 'border-current'} px-1.5 flex-shrink-0`}>
+        <span className={`text-sm font-bold border ${isDeparting ? 'border-white' : 'border-current'} flex-shrink-0 min-w-[28px] text-center py-0.5`}>
           P{departure.platform}
         </span>
       )}

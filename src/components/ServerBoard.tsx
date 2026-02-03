@@ -66,7 +66,7 @@ function CompactDepartureRow({
         backgroundColor: isDeparting ? '#000' : 'transparent',
         color: isDeparting ? '#fff' : 'inherit',
         borderTop: isDeparting ? '2px solid #fff' : 'none',
-        borderBottom: isDeparting ? '2px solid #fff' : '1px solid #ccc',
+        borderBottom: '1px solid #ccc',
       }}
     >
       {/* Route number - only for non-trains */}
@@ -106,9 +106,11 @@ function CompactDepartureRow({
           style={{
             fontSize: '1.125rem',
             fontWeight: 'bold',
-            padding: '2px 6px',
+            padding: '2px 0',
             border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
             flexShrink: 0,
+            minWidth: '28px',
+            textAlign: 'center',
           }}
         >
           E
@@ -121,9 +123,11 @@ function CompactDepartureRow({
           style={{
             fontSize: '1.125rem',
             border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
-            padding: '2px 6px',
+            padding: '2px 0',
             fontWeight: 'bold',
             flexShrink: 0,
+            minWidth: '28px',
+            textAlign: 'center',
           }}
         >
           P{departure.platform}
