@@ -134,7 +134,9 @@ sensor:
       float voltage = id(battery_voltage).state;
       // LiPo battery: 4.2V = 100%, 3.0V = 0%
       float percentage = (voltage - 3.0) / (4.2 - 3.0) * 100.0;
-      return constrain(percentage, 0.0, 100.0);
+      if (percentage < 0.0) percentage = 0.0;
+      if (percentage > 100.0) percentage = 100.0;
+      return percentage;
 
 deep_sleep:
   id: deep_sleep_control

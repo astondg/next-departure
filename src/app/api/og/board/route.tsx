@@ -296,7 +296,7 @@ export async function GET(request: NextRequest) {
     platform: Math.round(16 * fontScale),       // Increased for bolder badges
     time: Math.round(30 * fontScale),
     message: Math.round(16 * fontScale),
-    timestamp: Math.round(15 * fontScale),      // Footer text (larger for e-ink readability)
+    timestamp: Math.round(18 * fontScale),      // Footer text (larger for e-ink readability)
   };
 
   const headerPadding = Math.round(6 * scale);
@@ -315,10 +315,9 @@ export async function GET(request: NextRequest) {
 
   // Sidebar-specific font sizes (large for glanceability)
   const sidebarFontSize = {
-    battery: Math.round(14 * scale),
     temp: Math.round(72 * scale),
     humidity: Math.round(36 * scale),
-    label: Math.round(14 * scale),
+    label: Math.round(16 * scale),
   };
 
   // Timetable content (shared between both layouts)
@@ -386,7 +385,7 @@ export async function GET(request: NextRequest) {
                   height: `${rowHeight}px`,
                   fontSize: `${fontSize.message}px`,
                   fontWeight: 400,
-                  color: '#444444',
+                  color: '#000000',
                 }}
               >
                 {stop.error}
@@ -400,7 +399,7 @@ export async function GET(request: NextRequest) {
                   height: `${rowHeight}px`,
                   fontSize: `${fontSize.message}px`,
                   fontWeight: 400,
-                  color: '#444444',
+                  color: '#000000',
                 }}
               >
                 No departures
@@ -547,7 +546,7 @@ export async function GET(request: NextRequest) {
               alignItems: 'center',
               gap: `${Math.round(12 * scale)}px`,
               fontSize: `${fontSize.timestamp}px`,
-              color: '#666666',
+              color: '#000000',
               fontWeight: 400,
             }}
           >
@@ -577,7 +576,7 @@ export async function GET(request: NextRequest) {
                     width="13"
                     height="9"
                     rx="1.5"
-                    stroke="#666666"
+                    stroke="#000000"
                     strokeWidth="1"
                   />
                   <rect
@@ -586,7 +585,7 @@ export async function GET(request: NextRequest) {
                     width="2"
                     height="4"
                     rx="0.5"
-                    fill="#666666"
+                    fill="#000000"
                   />
                   <rect
                     x="2"
@@ -594,7 +593,7 @@ export async function GET(request: NextRequest) {
                     width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
                     height="6"
                     rx="0.5"
-                    fill="#666666"
+                    fill="#000000"
                   />
                 </svg>
                 {Math.round(deviceBattery)}%
@@ -609,7 +608,7 @@ export async function GET(request: NextRequest) {
         <span
           style={{
             fontSize: `${fontSize.timestamp}px`,
-            color: '#666666',
+            color: '#000000',
             fontWeight: 400,
           }}
         >
@@ -631,56 +630,6 @@ export async function GET(request: NextRequest) {
         padding: `${padding}px`,
       }}
     >
-      {/* Battery indicator (top, subtle) */}
-      {deviceBattery !== null && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            gap: `${Math.round(6 * scale)}px`,
-            fontSize: `${sidebarFontSize.battery}px`,
-            color: '#888888',
-            fontWeight: 400,
-            marginBottom: `${Math.round(8 * scale)}px`,
-          }}
-        >
-          <svg
-            width={Math.round(20 * scale)}
-            height={Math.round(12 * scale)}
-            viewBox="0 0 16 10"
-            fill="none"
-          >
-            <rect
-              x="0.5"
-              y="0.5"
-              width="13"
-              height="9"
-              rx="1.5"
-              stroke="#888888"
-              strokeWidth="1"
-            />
-            <rect
-              x="14"
-              y="3"
-              width="2"
-              height="4"
-              rx="0.5"
-              fill="#888888"
-            />
-            <rect
-              x="2"
-              y="2"
-              width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
-              height="6"
-              rx="0.5"
-              fill="#888888"
-            />
-          </svg>
-          {Math.round(deviceBattery)}%
-        </div>
-      )}
-
       {/* Weather data (centered, large) */}
       <div
         style={{
@@ -738,7 +687,7 @@ export async function GET(request: NextRequest) {
                 fontSize: `${sidebarFontSize.humidity}px`,
                 fontWeight: 700,
                 lineHeight: 1,
-                color: '#444444',
+                color: '#000000',
               }}
             >
               {Math.round(deviceHumidity)}%
@@ -747,7 +696,7 @@ export async function GET(request: NextRequest) {
               style={{
                 fontSize: `${sidebarFontSize.label}px`,
                 fontWeight: 400,
-                color: '#888888',
+                color: '#000000',
                 marginTop: `${Math.round(4 * scale)}px`,
               }}
             >
@@ -756,6 +705,55 @@ export async function GET(request: NextRequest) {
           </div>
         )}
       </div>
+
+      {/* Battery in footer */}
+      {deviceBattery !== null && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: `${Math.round(6 * scale)}px`,
+            fontSize: `${fontSize.timestamp}px`,
+            color: '#000000',
+            fontWeight: 400,
+          }}
+        >
+          <svg
+            width={Math.round(20 * scale)}
+            height={Math.round(12 * scale)}
+            viewBox="0 0 16 10"
+            fill="none"
+          >
+            <rect
+              x="0.5"
+              y="0.5"
+              width="13"
+              height="9"
+              rx="1.5"
+              stroke="#000000"
+              strokeWidth="1"
+            />
+            <rect
+              x="14"
+              y="3"
+              width="2"
+              height="4"
+              rx="0.5"
+              fill="#000000"
+            />
+            <rect
+              x="2"
+              y="2"
+              width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+              height="6"
+              rx="0.5"
+              fill="#000000"
+            />
+          </svg>
+          {Math.round(deviceBattery)}%
+        </div>
+      )}
     </div>
   ) : null;
 
