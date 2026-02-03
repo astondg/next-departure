@@ -2,9 +2,21 @@
 # ESP32-S3 with 7.5" e-ink display
 #
 # Fetches departure board image from API and displays on e-ink.
+# Includes temperature, humidity, and battery level from onboard sensors.
+#
+# Layout options (set use_sidebar in substitutions):
+#   - sidebar=true: 2/3 timetable + 1/3 weather panel (large temp/humidity display)
+#   - sidebar=false: Full-width timetable with sensor data in footer
+#
 # Uses deep sleep for battery efficiency:
 #   - 1 min refresh during active hours (4am-9pm)
 #   - 2 min refresh during quiet hours (9pm-4am)
+
+substitutions:
+  board_url: "https://next-departure.vercel.app/api/og/board?stops=tram:2070,train:1201:1&limit=3&mono=true"
+  # Set to "true" to enable sidebar layout with large weather panel (1/3 of screen)
+  # Set to "false" to show sensor data in footer instead
+  use_sidebar: "true"
 
 esphome:
   name: reterminal-e1001
@@ -16,7 +28,24 @@ esphome:
           wifi.connected:
       - wait_until:
           lambda: 'return id(sntp_time).now().is_valid();'
-      - component.update: departure_image
+      # Read sensor values before fetching image
+      - component.update: aht20_sensor
+      - component.update: battery_voltage
+      - delay: 100ms
+      - component.update: battery_level
+      - delay: 100ms
+      # Update URL with sensor data and fetch image
+      - online_image.set_url:
+          id: departure_image
+          url: !lambda |-
+            char url[512];
+            snprintf(url, sizeof(url),
+              "${board_url}&t=%lu&temp=%.1f&humidity=%.0f&battery=%.0f&sidebar=${use_sidebar}",
+              millis(),
+              id(temperature).state,
+              id(humidity).state,
+              id(battery_level).state);
+            return std::string(url);
       - delay: 5s
       - component.update: epaper_display
       - delay: 1s
@@ -62,6 +91,51 @@ http_request:
   verify_ssl: false
   timeout: 15s
 
+i2c:
+  sda: GPIO19
+  scl: GPIO20
+  scan: false
+
+sensor:
+  # AHT20 Temperature & Humidity sensor (built-in on E1001)
+  - platform: aht10
+    id: aht20_sensor
+    variant: AHT20
+    temperature:
+      name: "Temperature"
+      id: temperature
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+    humidity:
+      name: "Humidity"
+      id: humidity
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+    update_interval: never  # Only update on demand
+
+  # Battery voltage monitoring
+  - platform: adc
+    pin: GPIO1
+    id: battery_voltage
+    name: "Battery Voltage"
+    update_interval: never
+    attenuation: 12db
+    filters:
+      - multiply: 2.0  # Voltage divider compensation
+
+  # Battery percentage (approximate)
+  - platform: template
+    name: "Battery Level"
+    id: battery_level
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: never
+    lambda: |-
+      float voltage = id(battery_voltage).state;
+      // LiPo battery: 4.2V = 100%, 3.0V = 0%
+      float percentage = (voltage - 3.0) / (4.2 - 3.0) * 100.0;
+      return constrain(percentage, 0.0, 100.0);
+
 deep_sleep:
   id: deep_sleep_control
   run_duration: 30s
@@ -69,7 +143,7 @@ deep_sleep:
 
 online_image:
   - id: departure_image
-    url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1201:1&limit=3"
+    url: "${board_url}"  # Initial URL, updated dynamically with sensor data
     format: PNG
     type: BINARY
     resize: 800x480

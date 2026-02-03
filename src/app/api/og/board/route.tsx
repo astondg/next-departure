@@ -18,6 +18,8 @@
  *   - temp: temperature in Celsius from device sensor (optional, e.g., "21.5")
  *   - humidity: relative humidity percentage from device sensor (optional, e.g., "45")
  *   - battery: battery level percentage from device sensor (optional, e.g., "87")
+ *   - sidebar: enable sidebar layout with weather panel (default false, e.g., "true")
+ *             When enabled, displays 2/3 timetable + 1/3 weather sidebar
  */
 
 import { ImageResponse } from '@vercel/og';
@@ -219,6 +221,9 @@ export async function GET(request: NextRequest) {
   // Check if we have any device sensor data to display
   const hasDeviceData = deviceTemp !== null || deviceHumidity !== null || deviceBattery !== null;
 
+  // Sidebar layout: 2/3 timetable + 1/3 weather panel
+  const useSidebar = searchParams.get('sidebar') === 'true' && hasDeviceData;
+
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
   const height = Math.round(baseHeight * scale);
@@ -304,303 +309,470 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          width: '100%',
-          height: '100%',
-          backgroundColor: '#ffffff',
-          fontFamily: 'Inter, sans-serif',
-          padding: `${padding}px`,
-        }}
-      >
-        {stopData.map((stop, stopIndex) => (
-            <div
-              key={`${stop.mode}-${stop.stopId}`}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : '0',
-              }}
-            >
-              {/* Stop header */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: '#000000',
-                  color: '#ffffff',
-                  padding: `0 ${padding + 4}px`,
-                  height: `${headerHeight}px`,
-                }}
-              >
-                <span
-                  style={{
-                    fontWeight: 700,
-                    fontSize: `${fontSize.modeLabel}px`,
-                    letterSpacing: '0.08em',
-                    marginRight: `${Math.round(12 * fontScale)}px`,
-                  }}
-                >
-                  {getModeLabel(stop.mode)}
-                </span>
-                <span
-                  style={{
-                    fontSize: `${fontSize.stopName}px`,
-                    fontWeight: 400,
-                    opacity: 0.9,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stop.stopName}
-                </span>
-              </div>
+  // Sidebar dimensions
+  const sidebarWidth = useSidebar ? Math.round(width / 3) : 0;
+  const mainWidth = useSidebar ? width - sidebarWidth : width;
 
-              {/* Departures */}
-              {stop.error ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: `${rowHeight}px`,
-                    fontSize: `${fontSize.message}px`,
-                    fontWeight: 400,
-                    color: '#444444',
-                  }}
-                >
-                  {stop.error}
-                </div>
-              ) : stop.departures.length === 0 ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: `${rowHeight}px`,
-                    fontSize: `${fontSize.message}px`,
-                    fontWeight: 400,
-                    color: '#444444',
-                  }}
-                >
-                  No departures
-                </div>
-              ) : (
-                stop.departures.map((departure, depIndex) => {
-                  const timeInfo = formatDepartureTime(
-                    departure.scheduledTime,
-                    departure.estimatedTime,
-                    showAbsolute
-                  );
-                  const isDeparting = timeInfo.display === 'now';
-                  const isTrain = departure.mode === 'train';
-                  const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
-                  const isLastInSection = depIndex === stop.departures.length - 1;
+  // Sidebar-specific font sizes (large for glanceability)
+  const sidebarFontSize = {
+    battery: Math.round(14 * scale),
+    temp: Math.round(72 * scale),
+    humidity: Math.round(36 * scale),
+    label: Math.round(14 * scale),
+  };
 
-                  return (
-                    <div
-                      key={departure.id || depIndex}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        height: `${rowHeight}px`,
-                        padding: `0 ${padding + 4}px`,
-                        borderTop: isDeparting ? `${borderWidth}px solid #ffffff` : 'none',
-                        borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
-                        backgroundColor: isDeparting ? '#000000' : '#ffffff',
-                        color: isDeparting ? '#ffffff' : '#000000',
-                      }}
-                    >
-                      {/* Route number - hide for trains (redundant with destination) */}
-                      {!isTrain && (
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: `${fontSize.routeNumber}px`,
-                            width: `${routeNumWidth}px`,
-                            textAlign: 'center',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {departure.routeName}
-                        </span>
-                      )}
-
-                      {/* Destination - larger font for trains since they have no route number */}
-                      <span
-                        style={{
-                          flex: 1,
-                          fontSize: `${isTrain ? fontSize.trainDestination : fontSize.destination}px`,
-                          fontWeight: isTrain ? 500 : 400,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
-                          marginRight: `${Math.round(8 * fontScale)}px`,
-                        }}
-                      >
-                        {departure.destination}
-                      </span>
-
-                      {/* Express indicator */}
-                      {isExpress && (
-                        <span
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: `${fontSize.destination}px`,
-                            fontWeight: 700,
-                            padding: `${Math.round(2 * fontScale)}px 0`,
-                            border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                            marginRight: `${Math.round(8 * fontScale)}px`,
-                            minWidth: `${Math.round(28 * fontScale)}px`,
-                            flexShrink: 0,
-                          }}
-                        >
-                          E
-                        </span>
-                      )}
-
-                      {/* Platform */}
-                      {departure.platform && (
-                        <span
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: `${fontSize.destination}px`,
-                            border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                            padding: `${Math.round(2 * fontScale)}px 0`,
-                            fontWeight: 700,
-                            marginRight: `${Math.round(8 * fontScale)}px`,
-                            minWidth: `${Math.round(28 * fontScale)}px`,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {departure.platform}
-                        </span>
-                      )}
-
-                      {/* Time */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'baseline',
-                          justifyContent: 'flex-end',
-                          minWidth: `${timeWidth}px`,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: `${fontSize.time}px`,
-                          }}
-                        >
-                          {timeInfo.display}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )
-        )}
-
-        {/* Footer with device status and timestamp */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            flex: 1,
-            paddingTop: `${Math.round(4 * scale)}px`,
-          }}
-        >
-          {/* Device sensor data (left side) */}
-          {hasDeviceData ? (
+  // Timetable content (shared between both layouts)
+  const timetableContent = (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: useSidebar ? `${mainWidth}px` : '100%',
+        height: '100%',
+        padding: `${padding}px`,
+      }}
+    >
+      {stopData.map((stop, stopIndex) => (
+          <div
+            key={`${stop.mode}-${stop.stopId}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              marginBottom: stopIndex < stopCount - 1 ? `${sectionGap}px` : '0',
+            }}
+          >
+            {/* Stop header */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: `${Math.round(12 * scale)}px`,
-                fontSize: `${fontSize.timestamp}px`,
-                color: '#666666',
-                fontWeight: 400,
+                backgroundColor: '#000000',
+                color: '#ffffff',
+                padding: `0 ${padding + 4}px`,
+                height: `${headerHeight}px`,
               }}
             >
-              {deviceTemp !== null && (
-                <span>{Math.round(deviceTemp)}°C</span>
-              )}
-              {deviceHumidity !== null && (
-                <span>{Math.round(deviceHumidity)}%</span>
-              )}
-              {deviceBattery !== null && (
-                <span
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: `${Math.round(4 * scale)}px`,
-                  }}
-                >
-                  <svg
-                    width={Math.round(16 * scale)}
-                    height={Math.round(10 * scale)}
-                    viewBox="0 0 16 10"
-                    fill="none"
-                  >
-                    <rect
-                      x="0.5"
-                      y="0.5"
-                      width="13"
-                      height="9"
-                      rx="1.5"
-                      stroke="#666666"
-                      strokeWidth="1"
-                    />
-                    <rect
-                      x="14"
-                      y="3"
-                      width="2"
-                      height="4"
-                      rx="0.5"
-                      fill="#666666"
-                    />
-                    <rect
-                      x="2"
-                      y="2"
-                      width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
-                      height="6"
-                      rx="0.5"
-                      fill="#666666"
-                    />
-                  </svg>
-                  {Math.round(deviceBattery)}%
-                </span>
-              )}
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: `${fontSize.modeLabel}px`,
+                  letterSpacing: '0.08em',
+                  marginRight: `${Math.round(12 * fontScale)}px`,
+                }}
+              >
+                {getModeLabel(stop.mode)}
+              </span>
+              <span
+                style={{
+                  fontSize: `${fontSize.stopName}px`,
+                  fontWeight: 400,
+                  opacity: 0.9,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {stop.stopName}
+              </span>
             </div>
-          ) : (
-            <div />
-          )}
 
-          {/* Timestamp (right side) */}
-          <span
+            {/* Departures */}
+            {stop.error ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: `${rowHeight}px`,
+                  fontSize: `${fontSize.message}px`,
+                  fontWeight: 400,
+                  color: '#444444',
+                }}
+              >
+                {stop.error}
+              </div>
+            ) : stop.departures.length === 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: `${rowHeight}px`,
+                  fontSize: `${fontSize.message}px`,
+                  fontWeight: 400,
+                  color: '#444444',
+                }}
+              >
+                No departures
+              </div>
+            ) : (
+              stop.departures.map((departure, depIndex) => {
+                const timeInfo = formatDepartureTime(
+                  departure.scheduledTime,
+                  departure.estimatedTime,
+                  showAbsolute
+                );
+                const isDeparting = timeInfo.display === 'now';
+                const isTrain = departure.mode === 'train';
+                const isExpress = departure.expressStopCount && departure.expressStopCount > 0;
+                const isLastInSection = depIndex === stop.departures.length - 1;
+
+                return (
+                  <div
+                    key={departure.id || depIndex}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      height: `${rowHeight}px`,
+                      padding: `0 ${padding + 4}px`,
+                      borderTop: isDeparting ? `${borderWidth}px solid #ffffff` : 'none',
+                      borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
+                      backgroundColor: isDeparting ? '#000000' : '#ffffff',
+                      color: isDeparting ? '#ffffff' : '#000000',
+                    }}
+                  >
+                    {/* Route number - hide for trains (redundant with destination) */}
+                    {!isTrain && (
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: `${fontSize.routeNumber}px`,
+                          width: `${routeNumWidth}px`,
+                          textAlign: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {departure.routeName}
+                      </span>
+                    )}
+
+                    {/* Destination - larger font for trains since they have no route number */}
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: `${isTrain ? fontSize.trainDestination : fontSize.destination}px`,
+                        fontWeight: isTrain ? 500 : 400,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
+                        marginRight: `${Math.round(8 * fontScale)}px`,
+                      }}
+                    >
+                      {departure.destination}
+                    </span>
+
+                    {/* Express indicator */}
+                    {isExpress && (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: `${fontSize.destination}px`,
+                          fontWeight: 700,
+                          padding: `${Math.round(2 * fontScale)}px 0`,
+                          border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                          marginRight: `${Math.round(8 * fontScale)}px`,
+                          minWidth: `${Math.round(28 * fontScale)}px`,
+                          flexShrink: 0,
+                        }}
+                      >
+                        E
+                      </span>
+                    )}
+
+                    {/* Platform */}
+                    {departure.platform && (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: `${fontSize.destination}px`,
+                          border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                          padding: `${Math.round(2 * fontScale)}px 0`,
+                          fontWeight: 700,
+                          marginRight: `${Math.round(8 * fontScale)}px`,
+                          minWidth: `${Math.round(28 * fontScale)}px`,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {departure.platform}
+                      </span>
+                    )}
+
+                    {/* Time */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'flex-end',
+                        minWidth: `${timeWidth}px`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: `${fontSize.time}px`,
+                        }}
+                      >
+                        {timeInfo.display}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )
+      )}
+
+      {/* Footer with timestamp (and device data if not using sidebar) */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: useSidebar ? 'flex-end' : 'space-between',
+          alignItems: 'flex-end',
+          flex: 1,
+          paddingTop: `${Math.round(4 * scale)}px`,
+        }}
+      >
+        {/* Device sensor data in footer (only when NOT using sidebar) */}
+        {!useSidebar && hasDeviceData ? (
+          <div
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: `${Math.round(12 * scale)}px`,
               fontSize: `${fontSize.timestamp}px`,
               color: '#666666',
               fontWeight: 400,
             }}
           >
-            Updated {timestamp}
-          </span>
+            {deviceTemp !== null && (
+              <span>{Math.round(deviceTemp)}°C</span>
+            )}
+            {deviceHumidity !== null && (
+              <span>{Math.round(deviceHumidity)}%</span>
+            )}
+            {deviceBattery !== null && (
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${Math.round(4 * scale)}px`,
+                }}
+              >
+                <svg
+                  width={Math.round(16 * scale)}
+                  height={Math.round(10 * scale)}
+                  viewBox="0 0 16 10"
+                  fill="none"
+                >
+                  <rect
+                    x="0.5"
+                    y="0.5"
+                    width="13"
+                    height="9"
+                    rx="1.5"
+                    stroke="#666666"
+                    strokeWidth="1"
+                  />
+                  <rect
+                    x="14"
+                    y="3"
+                    width="2"
+                    height="4"
+                    rx="0.5"
+                    fill="#666666"
+                  />
+                  <rect
+                    x="2"
+                    y="2"
+                    width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+                    height="6"
+                    rx="0.5"
+                    fill="#666666"
+                  />
+                </svg>
+                {Math.round(deviceBattery)}%
+              </span>
+            )}
+          </div>
+        ) : !useSidebar ? (
+          <div />
+        ) : null}
+
+        {/* Timestamp (right side) */}
+        <span
+          style={{
+            fontSize: `${fontSize.timestamp}px`,
+            color: '#666666',
+            fontWeight: 400,
+          }}
+        >
+          Updated {timestamp}
+        </span>
+      </div>
+    </div>
+  );
+
+  // Sidebar content (weather panel)
+  const sidebarContent = useSidebar ? (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: `${sidebarWidth}px`,
+        height: '100%',
+        borderLeft: `${Math.round(3 * scale)}px solid #000000`,
+        padding: `${padding}px`,
+      }}
+    >
+      {/* Battery indicator (top, subtle) */}
+      {deviceBattery !== null && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: `${Math.round(6 * scale)}px`,
+            fontSize: `${sidebarFontSize.battery}px`,
+            color: '#888888',
+            fontWeight: 400,
+            marginBottom: `${Math.round(8 * scale)}px`,
+          }}
+        >
+          <svg
+            width={Math.round(20 * scale)}
+            height={Math.round(12 * scale)}
+            viewBox="0 0 16 10"
+            fill="none"
+          >
+            <rect
+              x="0.5"
+              y="0.5"
+              width="13"
+              height="9"
+              rx="1.5"
+              stroke="#888888"
+              strokeWidth="1"
+            />
+            <rect
+              x="14"
+              y="3"
+              width="2"
+              height="4"
+              rx="0.5"
+              fill="#888888"
+            />
+            <rect
+              x="2"
+              y="2"
+              width={Math.round(10 * Math.min(deviceBattery, 100) / 100)}
+              height="6"
+              rx="0.5"
+              fill="#888888"
+            />
+          </svg>
+          {Math.round(deviceBattery)}%
         </div>
+      )}
+
+      {/* Weather data (centered, large) */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: 1,
+          gap: `${Math.round(16 * scale)}px`,
+        }}
+      >
+        {/* Temperature (large, primary) */}
+        {deviceTemp !== null && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+            }}
+          >
+            <span
+              style={{
+                fontSize: `${sidebarFontSize.temp}px`,
+                fontWeight: 700,
+                lineHeight: 1,
+                color: '#000000',
+              }}
+            >
+              {Math.round(deviceTemp)}
+            </span>
+            <span
+              style={{
+                fontSize: `${Math.round(sidebarFontSize.temp * 0.4)}px`,
+                fontWeight: 400,
+                marginTop: `${Math.round(8 * scale)}px`,
+                color: '#000000',
+              }}
+            >
+              °C
+            </span>
+          </div>
+        )}
+
+        {/* Humidity (medium, secondary) */}
+        {deviceHumidity !== null && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
+            <span
+              style={{
+                fontSize: `${sidebarFontSize.humidity}px`,
+                fontWeight: 700,
+                lineHeight: 1,
+                color: '#444444',
+              }}
+            >
+              {Math.round(deviceHumidity)}%
+            </span>
+            <span
+              style={{
+                fontSize: `${sidebarFontSize.label}px`,
+                fontWeight: 400,
+                color: '#888888',
+                marginTop: `${Math.round(4 * scale)}px`,
+              }}
+            >
+              humidity
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        {timetableContent}
+        {sidebarContent}
       </div>
     ),
     {
