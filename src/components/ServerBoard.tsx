@@ -65,7 +65,8 @@ function CompactDepartureRow({
         padding: '12px 16px',
         backgroundColor: isDeparting ? '#000' : 'transparent',
         color: isDeparting ? '#fff' : 'inherit',
-        borderBottom: '1px solid #ccc',
+        borderTop: isDeparting ? '2px solid #fff' : 'none',
+        borderBottom: isDeparting ? '2px solid #fff' : '1px solid #ccc',
       }}
     >
       {/* Route number - only for non-trains */}
@@ -86,21 +87,6 @@ function CompactDepartureRow({
         </span>
       )}
 
-      {/* Express indicator */}
-      {isExpress && (
-        <span
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 'bold',
-            padding: '2px 4px',
-            border: `2px solid ${isDeparting ? '#fff' : 'currentColor'}`,
-            flexShrink: 0,
-          }}
-        >
-          E
-        </span>
-      )}
-
       {/* Destination - secondary */}
       <span
         style={{
@@ -114,13 +100,28 @@ function CompactDepartureRow({
         {departure.destination}
       </span>
 
+      {/* Express indicator */}
+      {isExpress && (
+        <span
+          style={{
+            fontSize: '1.125rem',
+            fontWeight: 'bold',
+            padding: '2px 6px',
+            border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
+            flexShrink: 0,
+          }}
+        >
+          E
+        </span>
+      )}
+
       {/* Platform if available */}
       {departure.platform && (
         <span
           style={{
-            fontSize: '1rem',
-            border: '2px solid currentColor',
-            padding: '2px 8px',
+            fontSize: '1.125rem',
+            border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
+            padding: '2px 6px',
             fontWeight: 'bold',
             flexShrink: 0,
           }}

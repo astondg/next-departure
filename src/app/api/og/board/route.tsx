@@ -262,7 +262,7 @@ export async function GET(request: NextRequest) {
     platform: Math.round(16 * fontScale),       // Increased for bolder badges
     time: Math.round(30 * fontScale),
     message: Math.round(16 * fontScale),
-    timestamp: Math.round(11 * fontScale),      // Small footer text
+    timestamp: Math.round(15 * fontScale),      // Footer text (larger for e-ink readability)
   };
 
   const headerPadding = Math.round(6 * scale);
@@ -381,7 +381,12 @@ export async function GET(request: NextRequest) {
                         alignItems: 'center',
                         height: `${rowHeight}px`,
                         padding: `0 ${padding + 4}px`,
-                        borderBottom: isLastInSection ? 'none' : `${borderWidth}px solid #000000`,
+                        borderTop: isDeparting ? `${borderWidth}px solid #ffffff` : 'none',
+                        borderBottom: isDeparting
+                          ? `${borderWidth}px solid #ffffff`
+                          : isLastInSection
+                            ? 'none'
+                            : `${borderWidth}px solid #000000`,
                         backgroundColor: isDeparting ? '#000000' : '#ffffff',
                         color: isDeparting ? '#ffffff' : '#000000',
                       }}
@@ -401,23 +406,6 @@ export async function GET(request: NextRequest) {
                         </span>
                       )}
 
-                      {/* Express indicator */}
-                      {isExpress && (
-                        <span
-                          style={{
-                            fontSize: `${fontSize.platform}px`,
-                            fontWeight: 700,
-                            padding: `${Math.round(2 * fontScale)}px ${Math.round(4 * fontScale)}px`,
-                            border: `${borderWidth}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
-                            marginLeft: isTrain ? '0' : `${Math.round(4 * fontScale)}px`,
-                            marginRight: `${Math.round(4 * fontScale)}px`,
-                            flexShrink: 0,
-                          }}
-                        >
-                          E
-                        </span>
-                      )}
-
                       {/* Destination - larger font for trains since they have no route number */}
                       <span
                         style={{
@@ -427,18 +415,34 @@ export async function GET(request: NextRequest) {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          marginLeft: isTrain && !isExpress ? '0' : `${Math.round(8 * fontScale)}px`,
+                          marginLeft: isTrain ? '0' : `${Math.round(8 * fontScale)}px`,
                           marginRight: `${Math.round(8 * fontScale)}px`,
                         }}
                       >
                         {departure.destination}
                       </span>
 
+                      {/* Express indicator */}
+                      {isExpress && (
+                        <span
+                          style={{
+                            fontSize: `${fontSize.destination}px`,
+                            fontWeight: 700,
+                            padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
+                            border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
+                            marginRight: `${Math.round(8 * fontScale)}px`,
+                            flexShrink: 0,
+                          }}
+                        >
+                          E
+                        </span>
+                      )}
+
                       {/* Platform */}
                       {departure.platform && (
                         <span
                           style={{
-                            fontSize: `${fontSize.platform}px`,
+                            fontSize: `${fontSize.destination}px`,
                             border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? '#ffffff' : '#000000'}`,
                             padding: `${Math.round(2 * fontScale)}px ${Math.round(6 * fontScale)}px`,
                             fontWeight: 700,
@@ -468,18 +472,6 @@ export async function GET(request: NextRequest) {
                         >
                           {timeInfo.display}
                         </span>
-                        {/* Show delay info if significant (only for real-time) */}
-                        {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
-                          <span
-                            style={{
-                              fontSize: `${Math.round(12 * fontScale)}px`,
-                              fontWeight: 500,
-                              marginLeft: `${Math.round(4 * fontScale)}px`,
-                            }}
-                          >
-                            {timeInfo.delayMinutes > 0 ? `+${timeInfo.delayMinutes}` : timeInfo.delayMinutes}
-                          </span>
-                        )}
                       </div>
                     </div>
                   );

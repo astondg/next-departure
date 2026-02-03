@@ -1,65 +1,31 @@
-# ============================================================
-# Next Departure - reTerminal E1001 ESPHome Configuration
-# ============================================================
+# Seeed Studio reTerminal E1001 - Departure Board
+# ESP32-S3 with 7.5" e-ink display
 #
-# This configuration fetches a pre-rendered departure board image
-# from your Vercel deployment and displays it on the E1001's e-ink screen.
-#
-# Features:
-# - Deep sleep for maximum battery life
-# - Partial refresh support (reduces ghosting, faster updates)
-# - WiFi-only wake cycle (connects, fetches, displays, sleeps)
-# - Button wake support
-#
-# To use:
-# 1. Install ESPHome (pip install esphome)
-# 2. Update the substitutions below with your settings
-# 3. Flash: esphome run reterminal-e1001.yaml
-#
-# ============================================================
-
-substitutions:
-  # Device name (used in Home Assistant)
-  device_name: "departure-board"
-  friendly_name: "Departure Board"
-
-  # =====================================================
-  # CONFIGURE THESE FOR YOUR SETUP
-  # =====================================================
-
-  # Your WiFi credentials
-  wifi_ssid: "YOUR_WIFI_SSID"
-  wifi_password: "YOUR_WIFI_PASSWORD"
-
-  # Your deployed Next Departure URL
-  # Format: https://your-domain.vercel.app/api/og/board?stops=MODE:STOPID&mono=true
-  # Example stops:
-  #   - Single stop: tram:2070
-  #   - Multiple stops: tram:2070,train:19854
-  # Note: mono=true enables pure B/W mode optimized for 1-bit e-ink displays
-  board_url: "https://next-departure.vercel.app/api/og/board?stops=tram:2070&mono=true"
-
-  # Sleep duration between updates (in seconds)
-  # Recommended: 60s for real-time feel, 300s (5min) for better battery
-  sleep_duration: "60s"
-
-  # Full refresh interval (how many partial updates before a full refresh)
-  # Lower = less ghosting but more power. Higher = more ghosting but saves power.
-  # Recommended: 10-30
-  full_refresh_every: "20"
-
-# ============================================================
-# ESPHome Core Configuration
-# ============================================================
+# Fetches departure board image from API and displays on e-ink.
+# Uses deep sleep for battery efficiency:
+#   - 1 min refresh during active hours (4am-9pm)
+#   - 2 min refresh during quiet hours (9pm-4am)
 
 esphome:
-  name: ${device_name}
-  friendly_name: ${friendly_name}
-  # Run update routine on boot
+  name: reterminal-e1001
+  friendly_name: "Departure Board"
   on_boot:
-    priority: -100  # Run after everything is initialized
+    priority: -100
     then:
-      - script.execute: update_display
+      - wait_until:
+          wifi.connected:
+      - wait_until:
+          lambda: 'return id(sntp_time).now().is_valid();'
+      - component.update: departure_image
+      - delay: 5s
+      - component.update: epaper_display
+      - delay: 1s
+      - lambda: |-
+          auto time = id(sntp_time).now();
+          int hour = time.hour;
+          int sleep_mins = (hour >= 4 && hour < 21) ? 1 : 2;
+          id(deep_sleep_control).set_sleep_duration(sleep_mins * 60000);
+      - deep_sleep.enter: deep_sleep_control
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -67,76 +33,56 @@ esp32:
     type: esp-idf
   flash_size: 32MB
 
-# Enable PSRAM (required for online_image component)
 psram:
   mode: octal
   speed: 80MHz
 
-# ============================================================
-# Logging (reduce for production to save power)
-# ============================================================
-
 logger:
-  level: INFO
-  # Disable serial logging to save power
-  baud_rate: 0
+  level: WARN
+  baud_rate: 0  # Disable serial logging
 
-# ============================================================
-# WiFi Configuration
-# ============================================================
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  platform: esphome
+  password: !secret ota_password
 
 wifi:
-  ssid: ${wifi_ssid}
-  password: ${wifi_password}
-  # Fast connect - skip scanning, connect directly
-  fast_connect: true
-  # Power save mode
-  power_save_mode: HIGH
-  # Don't reboot if WiFi is unavailable
-  reboot_timeout: 0s
-  on_connect:
-    - logger.log: "WiFi connected"
-  on_disconnect:
-    - logger.log: "WiFi disconnected"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
-# ============================================================
-# Deep Sleep Configuration
-# ============================================================
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Australia/Melbourne
+
+http_request:
+  verify_ssl: false
+  timeout: 15s
 
 deep_sleep:
   id: deep_sleep_control
-  run_duration: 30s  # Max awake time before forced sleep
-  sleep_duration: ${sleep_duration}
-  # Wake on button press (right white button on E1001)
-  wakeup_pin:
-    number: GPIO4
-    inverted: true
-    allow_other_uses: true
-  wakeup_pin_mode: INVERT_WAKEUP
+  run_duration: 30s
+  sleep_duration: 1min
 
-# ============================================================
-# SPI & I2C Bus Configuration
-# ============================================================
+online_image:
+  - id: departure_image
+    url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1207,train:1201&limit=3"
+    format: PNG
+    type: BINARY
+    resize: 800x480
 
 spi:
   clk_pin: GPIO7
   mosi_pin: GPIO9
 
-i2c:
-  sda: GPIO19
-  scl: GPIO20
-  scan: false
-
-# ============================================================
-# E-Paper Display Configuration
-# ============================================================
-
 display:
   - platform: waveshare_epaper
     id: epaper_display
-    # Use 7.50inv2p for partial refresh (post-Sept 2023 displays)
-    # If display issues occur, try: 7.50inv2 or 7.50inv2alt
     model: 7.50inv2p
+    full_update_every: 10
     cs_pin: GPIO10
     dc_pin: GPIO11
     reset_pin:
@@ -144,151 +90,7 @@ display:
       inverted: false
     busy_pin:
       number: GPIO13
-      inverted: true  # CRITICAL: Must be inverted to prevent display damage
-    # Partial refresh settings
-    full_update_every: ${full_refresh_every}
-    reset_duration: 2ms
-    # Don't auto-update, we control updates via script
-    update_interval: never
-    rotation: 0
-    lambda: |-
-      // Display the downloaded image
-      if (id(departure_image).is_loaded()) {
-        it.image(0, 0, id(departure_image));
-      } else {
-        // Fallback: show loading message
-        it.fill(COLOR_ON);
-        it.print(400, 240, id(fallback_font), COLOR_OFF, TextAlign::CENTER, "Loading...");
-      }
-
-# ============================================================
-# Online Image Component (fetches PNG from your server)
-# ============================================================
-
-online_image:
-  - id: departure_image
-    url: ${board_url}
-    format: PNG
-    type: BINARY  # B/W image for e-ink
-    resize: 800x480
-    # Invert colors if needed (e-ink displays vary)
-    # invert_alpha: true
-    on_download_finished:
-      - logger.log: "Image downloaded successfully"
-      - component.update: epaper_display
-    on_error:
-      - logger.log: "Image download failed"
-      # Still try to show cached image if available
-      - component.update: epaper_display
-
-# ============================================================
-# Fonts (fallback for error messages)
-# ============================================================
-
-font:
-  - file: "gfonts://Roboto"
-    id: fallback_font
-    size: 24
-
-# ============================================================
-# Update Script
-# ============================================================
-
-script:
-  - id: update_display
-    mode: single
-    then:
-      - logger.log: "Starting display update cycle"
-      # Wait for WiFi to connect
-      - wait_until:
-          condition:
-            wifi.connected:
-          timeout: 15s
-      # Download the image
-      - logger.log: "Downloading departure board image..."
-      - online_image.set_url:
-          id: departure_image
-          # Add cache-busting timestamp to URL
-          url: !lambda |-
-            return "${board_url}&t=" + std::to_string(millis());
-      # Wait for download to complete (or timeout)
-      - delay: 10s
-      # Trigger display update if not already done by on_download_finished
-      - component.update: epaper_display
-      # Wait for display to finish updating
-      - delay: 3s
-      # Go to sleep
-      - logger.log: "Update complete, entering deep sleep"
-      - deep_sleep.enter: deep_sleep_control
-
-# ============================================================
-# Sensors (optional - for monitoring)
-# ============================================================
-
-sensor:
-  # Battery voltage monitoring
-  - platform: adc
-    pin: GPIO1
-    id: battery_voltage
-    name: "Battery Voltage"
-    update_interval: never  # Only update when needed
-    attenuation: 12db
-    filters:
-      - multiply: 2.0  # Voltage divider compensation
-
-  # Battery percentage (approximate)
-  - platform: template
-    name: "Battery Level"
-    id: battery_level
-    unit_of_measurement: "%"
-    accuracy_decimals: 0
-    lambda: |-
-      float voltage = id(battery_voltage).state;
-      // LiPo battery: 4.2V = 100%, 3.0V = 0%
-      float percentage = (voltage - 3.0) / (4.2 - 3.0) * 100.0;
-      return constrain(percentage, 0.0, 100.0);
-
-# ============================================================
-# Buttons
-# ============================================================
-
-binary_sensor:
-  # Right white button (also wake button)
-  - platform: gpio
-    pin:
-      number: GPIO4
       inverted: true
-      mode:
-        input: true
-        pullup: true
-      allow_other_uses: true
-    name: "Wake Button"
-    id: wake_button
-    on_press:
-      - logger.log: "Wake button pressed - forcing update"
-      - script.execute: update_display
-
-# ============================================================
-# Status LED
-# ============================================================
-
-output:
-  - platform: gpio
-    pin: GPIO46
-    id: status_led
-
-light:
-  - platform: binary
-    name: "Status LED"
-    id: status_led_light
-    output: status_led
-
-# ============================================================
-# Battery enable pin (must be high to read battery voltage)
-# ============================================================
-
-switch:
-  - platform: gpio
-    pin: GPIO21
-    id: battery_enable
-    restore_mode: ALWAYS_ON
+    update_interval: never
+    lambda: |-
+      it.image(0, 0, id(departure_image));
