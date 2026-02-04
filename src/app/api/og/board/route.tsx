@@ -20,7 +20,9 @@
  *   - battery: battery level percentage from device sensor (optional, e.g., "87")
  *   - sidebar: enable sidebar layout with weather panel (default false, e.g., "true")
  *             When enabled, displays 2/3 timetable + 1/3 weather sidebar
- *   - tz: timezone for "Updated" timestamp (e.g., "Australia/Melbourne"). Falls back to UTC.
+ *   - lat: latitude for weather data and timezone (e.g., "-37.8136")
+ *   - lon: longitude for weather data and timezone (e.g., "144.9631")
+ *   - tz: timezone for "Updated" timestamp (e.g., "Australia/Melbourne"). Falls back to auto-detect from lat/lon, then UTC.
  *   - invert: invert colors for dark mode e-ink displays (default false, e.g., "true")
  */
 
@@ -51,6 +53,74 @@ interface StopData {
   stopName: string;
   departures: Departure[];
   error?: string;
+}
+
+interface WeatherData {
+  timezone: string;
+  rain: {
+    willRain: boolean;
+    hour: number | null; // Hour (0-23) when rain is expected, null if no rain
+    probability: number | null; // Probability percentage at that hour
+  };
+}
+
+// Precipitation probability threshold (30%) - based on NWS "scattered" category
+// and research showing this is where risk-averse people start bringing umbrellas
+const RAIN_PROBABILITY_THRESHOLD = 30;
+
+async function fetchWeather(
+  lat: number,
+  lon: number,
+): Promise<WeatherData | null> {
+  try {
+    // Fetch hourly precipitation probability for today with auto timezone
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation_probability&timezone=auto&forecast_days=1`;
+    const response = await fetch(url, {
+      next: { revalidate: 1800 }, // Cache for 30 minutes
+    });
+
+    if (!response.ok) {
+      console.error(`Weather API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const timezone = data.timezone || "UTC";
+    const probabilities: number[] = data.hourly?.precipitation_probability || [];
+
+    // Find first hour from now where probability exceeds threshold
+    const now = new Date();
+    // Convert to local hour using the timezone from the response
+    const localTime = new Date(
+      now.toLocaleString("en-US", { timeZone: timezone }),
+    );
+    const currentHour = localTime.getHours();
+
+    for (let i = currentHour; i < probabilities.length && i < 24; i++) {
+      if (probabilities[i] >= RAIN_PROBABILITY_THRESHOLD) {
+        return {
+          timezone,
+          rain: {
+            willRain: true,
+            hour: i,
+            probability: probabilities[i],
+          },
+        };
+      }
+    }
+
+    return {
+      timezone,
+      rain: {
+        willRain: false,
+        hour: null,
+        probability: null,
+      },
+    };
+  } catch (error) {
+    console.error("Weather fetch error:", error);
+    return null;
+  }
 }
 
 function getModeLabel(mode: TransportMode): string {
@@ -259,8 +329,15 @@ export async function GET(request: NextRequest) {
   // Sidebar layout: 2/3 timetable + 1/3 weather panel
   const useSidebar = searchParams.get("sidebar") === "true" && hasDeviceData;
 
-  // Timezone for timestamp (e.g., "Australia/Melbourne")
-  const timezone = searchParams.get("tz") || "UTC";
+  // Location for weather data and timezone derivation
+  const latParam = searchParams.get("lat");
+  const lonParam = searchParams.get("lon");
+  const lat = latParam ? parseFloat(latParam) : null;
+  const lon = lonParam ? parseFloat(lonParam) : null;
+  const hasLocation = lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon);
+
+  // Timezone: prefer explicit tz param if provided, otherwise derive from weather API
+  const tzParam = searchParams.get("tz");
 
   // Color inversion for dark mode e-ink displays
   const invert = true; //searchParams.get('invert') === 'true';
@@ -275,12 +352,13 @@ export async function GET(request: NextRequest) {
     return new Response("Missing required parameter: stops", { status: 400 });
   }
 
-  // Load fonts in parallel with departure data
+  // Load fonts, departure data, and weather in parallel
   const stopRequests = parseStops(stopsParam);
-  const [interBoldData, interRegularData, ...stopDataResults] =
+  const [interBoldData, interRegularData, weatherData, ...stopDataResults] =
     await Promise.all([
       interBold,
       interRegular,
+      hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
       ...stopRequests.map(({ mode, stopId, directionIds }) =>
         fetchStopDepartures(
           baseUrl,
@@ -294,6 +372,9 @@ export async function GET(request: NextRequest) {
     ]);
 
   const stopData = stopDataResults as StopData[];
+
+  // Use explicit tz param if provided, otherwise derive from weather API, fallback to UTC
+  const timezone = tzParam || (weatherData as WeatherData | null)?.timezone || "UTC";
   const stopCount = stopData.length;
 
   // Calculate total content rows (headers + departures + gaps)
@@ -792,6 +873,55 @@ export async function GET(request: NextRequest) {
               }}
             >
               humidity
+            </span>
+          </div>
+        )}
+
+        {/* Rain indicator (only shown when rain expected) */}
+        {(weatherData as WeatherData | null)?.rain?.willRain && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: `${Math.round(8 * scale)}px`,
+              marginTop: `${Math.round(8 * scale)}px`,
+            }}
+          >
+            {/* Rain cloud icon */}
+            <svg
+              width={Math.round(28 * scale)}
+              height={Math.round(28 * scale)}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              {/* Cloud */}
+              <path
+                d="M19 18H6a4 4 0 0 1-1-7.9 5.5 5.5 0 0 1 10.8-1.3A3.5 3.5 0 0 1 19 13v0a3 3 0 0 1 0 5z"
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {/* Rain drops */}
+              <path
+                d="M8 19v2M12 19v2M16 19v2"
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+            {/* Time when rain expected */}
+            <span
+              style={{
+                fontSize: `${sidebarFontSize.label}px`,
+                fontWeight: 700,
+                color: fg,
+              }}
+            >
+              ~{(weatherData as WeatherData).rain.hour! % 12 || 12}
+              {(weatherData as WeatherData).rain.hour! < 12 ? "am" : "pm"}
             </span>
           </div>
         )}
