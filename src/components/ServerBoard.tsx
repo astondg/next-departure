@@ -3,13 +3,15 @@
  *
  * Server-safe departure board that renders without JavaScript.
  * Optimized for e-ink displays - high contrast, large text, minimal clutter.
+ * Uses Tailwind CSS classes matching CombinedBoard for consistent styling.
  */
 
 import { Departure, TransportMode } from '@/lib/providers/types';
 import { formatDepartureTime } from '@/lib/utils/time';
 import { GearIcon } from './GearIcon';
+import { TransportIcon, getModeLabel } from './TransportIcon';
 import { UserSettings, getEnabledStops } from '@/lib/utils/storage';
-import { PROVIDER_INFO, ProviderId } from '@/lib/providers';
+import { PROVIDER_INFO } from '@/lib/providers';
 
 interface ModeSection {
   mode: TransportMode;
@@ -24,10 +26,6 @@ interface ServerBoardProps {
   sections: ModeSection[];
   settings: UserSettings;
   fetchedAt: string;
-}
-
-function getModeLabel(mode: TransportMode): string {
-  return mode.toUpperCase();
 }
 
 function CompactDepartureRow({
@@ -58,130 +56,53 @@ function CompactDepartureRow({
 
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '12px 16px',
-        backgroundColor: isDeparting ? '#000' : 'transparent',
-        color: isDeparting ? '#fff' : 'inherit',
-        borderTop: isDeparting ? '2px solid #fff' : 'none',
-        borderBottom: '1px solid #ccc',
-      }}
+      className={`flex items-center gap-2 py-2 px-2 ${
+        isDeparting ? 'bg-black text-white border-t-2 border-white' : ''
+      }`}
     >
       {/* Route number - only for non-trains */}
       {!isTrain && (
-        <span
-          style={{
-            fontWeight: 'bold',
-            fontSize: '1.75rem',
-            minWidth: '64px',
-            textAlign: 'center',
-            flexShrink: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <span className="font-bold text-xl w-14 text-center flex-shrink-0 truncate">
           {departure.routeName}
         </span>
       )}
 
-      {/* Destination - secondary */}
-      <span
-        style={{
-          flex: 1,
-          fontSize: '1.125rem',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
+      {/* Destination */}
+      <span className="flex-1 truncate text-base min-w-0">
         {departure.destination}
       </span>
 
       {/* Express indicator */}
       {isExpress && (
-        <span
-          style={{
-            fontSize: '1.125rem',
-            fontWeight: 'bold',
-            padding: '2px 0',
-            border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
-            flexShrink: 0,
-            minWidth: '28px',
-            textAlign: 'center',
-          }}
-        >
+        <span className={`text-sm font-bold border ${isDeparting ? 'border-white' : 'border-current'} flex-shrink-0 min-w-[28px] text-center py-0.5`}>
           E
         </span>
       )}
 
       {/* Platform if available */}
       {departure.platform && (
-        <span
-          style={{
-            fontSize: '1.125rem',
-            border: `1px solid ${isDeparting ? '#fff' : 'currentColor'}`,
-            padding: '2px 0',
-            fontWeight: 'bold',
-            flexShrink: 0,
-            minWidth: '28px',
-            textAlign: 'center',
-          }}
-        >
+        <span className={`text-sm font-bold border ${isDeparting ? 'border-white' : 'border-current'} flex-shrink-0 min-w-[28px] text-center py-0.5`}>
           P{departure.platform}
         </span>
       )}
 
       {/* Time - THE MOST IMPORTANT INFO */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontSize: '2rem',
-            fontWeight: 'bold',
-            lineHeight: 1,
-          }}
-        >
+      <div className="flex flex-col items-end flex-shrink-0 min-w-[70px]">
+        <span className="text-xl font-bold">
           {showAbsoluteTime ? timeInfo.absolute : timeInfo.relative}
         </span>
         {/* Data quality indicator bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+        <div className="flex items-center gap-1 mt-0.5">
           {timeInfo.isRealTime ? (
             /* Live data: solid bar */
-            <span
-              style={{
-                display: 'inline-block',
-                width: '32px',
-                height: '2px',
-                backgroundColor: isDeparting ? '#fff' : '#000',
-                borderRadius: '1px',
-              }}
-            />
+            <span className="h-0.5 w-8 bg-current rounded-full" />
           ) : (
-            /* Scheduled only: dotted bar */
-            <span
-              style={{
-                display: 'inline-block',
-                width: '32px',
-                height: '2px',
-                borderRadius: '1px',
-                background: isDeparting
-                  ? 'repeating-linear-gradient(90deg, rgba(255,255,255,0.5) 0px, rgba(255,255,255,0.5) 3px, transparent 3px, transparent 5px)'
-                  : 'repeating-linear-gradient(90deg, rgba(0,0,0,0.3) 0px, rgba(0,0,0,0.3) 3px, transparent 3px, transparent 5px)',
-              }}
-            />
+            /* Scheduled only: dotted dim bar */
+            <span className="h-0.5 w-8 rounded-full scheduled-bar" />
           )}
           {/* Show delay info if significant (only for real-time) */}
           {timeInfo.isRealTime && (timeInfo.delayMinutes < -2 || timeInfo.delayMinutes > 2) && (
-            <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>
+            <span className="text-xs font-medium">
               {timeInfo.delayMinutes < 0 ? timeInfo.delayMinutes : `+${timeInfo.delayMinutes}`}
             </span>
           )}
@@ -210,58 +131,29 @@ function ModeSectionComponent({
   const displayDepartures = upcomingDepartures.slice(0, departuresPerMode);
 
   return (
-    <div style={{ marginBottom: '8px' }}>
+    <div className="mb-4">
       {/* Mode header - compact */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '8px 16px',
-          backgroundColor: '#000',
-          color: '#fff',
-        }}
-      >
-        <span
-          style={{
-            fontWeight: 'bold',
-            fontSize: '1rem',
-            letterSpacing: '0.1em',
-          }}
-        >
+      <div className="flex items-center gap-2 px-2 py-1 bg-black text-white">
+        <TransportIcon mode={section.mode} size={18} className="text-white" />
+        <span className="font-bold text-sm uppercase tracking-wider">
           {getModeLabel(section.mode)}
         </span>
-        <span
-          style={{
-            fontSize: '1rem',
-            opacity: 0.8,
-            flex: 1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <span className="text-xs opacity-75 truncate flex-1">
           {section.stopName}
         </span>
       </div>
 
       {/* Departures */}
       {section.isLoading ? (
-        <div style={{ padding: '24px', textAlign: 'center', fontSize: '1.25rem' }}>
+        <div className="py-4 text-center text-sm">
           Loading...
         </div>
       ) : section.error ? (
-        <div
-          style={{
-            padding: '16px',
-            fontSize: '1rem',
-            backgroundColor: '#f5f5f5',
-          }}
-        >
+        <div className="py-2 px-2 text-sm border-l-4 border-black">
           {section.error}
         </div>
       ) : displayDepartures.length > 0 ? (
-        <div>
+        <div className="border-l-2 border-black">
           {displayDepartures.map((departure, index) => (
             <CompactDepartureRow
               key={departure.id || index}
@@ -272,7 +164,7 @@ function ModeSectionComponent({
           ))}
         </div>
       ) : (
-        <div style={{ padding: '24px 16px', fontSize: '1.125rem', color: '#666' }}>
+        <div className="py-2 px-2 text-sm text-gray-600">
           No upcoming departures
         </div>
       )}
@@ -296,43 +188,22 @@ export function ServerBoard({
   return (
     <div
       id="departure-board"
-      style={{
-        minHeight: '100vh',
-        backgroundColor: '#fff',
-        color: '#000',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      className="min-h-screen bg-white text-black font-sans flex flex-col"
     >
       {/* Main content - no header, just departures */}
-      <main style={{ flex: 1, paddingTop: '4px' }}>
+      <main className="flex-1 pt-1">
         {!hasConfiguredStops ? (
           /* No stops configured - show welcome */
-          <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-            <p
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: 'bold',
-                marginBottom: '16px',
-              }}
-            >
+          <div className="p-4 text-center">
+            <p className="text-lg font-bold mb-2">
               Welcome
             </p>
-            <p style={{ fontSize: '1.125rem', marginBottom: '24px' }}>
+            <p className="text-sm mb-4">
               Add your tram, train, or bus stops to see departures.
             </p>
             <a
               href="/settings"
-              style={{
-                display: 'inline-block',
-                backgroundColor: '#000',
-                color: '#fff',
-                padding: '16px 32px',
-                fontSize: '1.25rem',
-                fontWeight: 'bold',
-                textDecoration: 'none',
-              }}
+              className="inline-block bg-black text-white px-8 py-4 text-lg font-bold no-underline"
             >
               Add Stops
             </a>
@@ -354,40 +225,19 @@ export function ServerBoard({
       </main>
 
       {/* Footer - provider indicator + settings */}
-      <footer
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 16px',
-          borderTop: '1px solid #ddd',
-          color: '#999',
-          fontSize: '0.875rem',
-        }}
-      >
+      <footer className="flex items-center justify-between px-4 py-2 border-t border-gray-300 text-gray-400 text-sm">
         <span
           id="provider-indicator"
           data-provider={settings.activeProvider}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
+          className="flex items-center gap-2"
         >
-          <span style={{ fontWeight: 500 }}>
+          <span className="font-medium">
             {PROVIDER_INFO[settings.activeProvider]?.region || 'Unknown'}
           </span>
         </span>
         <a
           href="/settings"
-          style={{
-            padding: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            color: '#666',
-            textDecoration: 'none',
-          }}
+          className="p-2 flex items-center gap-1 text-gray-500 hover:text-gray-700 no-underline"
           title="Settings"
           id="settings-link"
         >
