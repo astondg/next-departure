@@ -59,7 +59,7 @@ export function ClientEnhancements({
   // Track if JS is working
   const [jsEnabled, setJsEnabled] = useState(false);
 
-  // Settings state
+  // Settings state - start with initial settings from server (cookies)
   const [settings, setSettings] = useState<UserSettings>(() => ({
     ...DEFAULT_SETTINGS,
     ...initialSettings,
@@ -70,7 +70,7 @@ export function ClientEnhancements({
   const [nearbyStops, setNearbyStops] = useState<NearbyStop[]>([]);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
 
-  // Departures state
+  // Departures state - start with server-rendered data
   const [sections, setSections] = useState<ModeSection[]>(initialSections);
   const [fetchedAt, setFetchedAt] = useState(initialFetchedAt);
   const [now, setNow] = useState(new Date());
@@ -79,14 +79,40 @@ export function ClientEnhancements({
   const mountedRef = useRef(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastLocationFetchRef = useRef<number>(0);
+  // Track if this is the first fetch after hydration
+  const isFirstFetchRef = useRef(true);
+  // Store initial sections to use as fallback
+  const initialSectionsRef = useRef<ModeSection[]>(initialSections);
 
   // Track if we've received client data (don't hide server board until then)
+  // Only set to true when we have actual departure data to show
   const [hasClientData, setHasClientData] = useState(false);
 
   // Enable JS features after hydration
   useEffect(() => {
     // Load settings from localStorage (may have more recent data than cookies)
     const localSettings = loadSettings();
+
+    // Check if localStorage settings match the initial server settings
+    // If they match and we have initial data, we can use server data directly
+    const settingsMatch =
+      localSettings.activeProvider === initialSettings.activeProvider &&
+      !localSettings.nearbyMode && // Nearby mode always needs fresh fetch
+      JSON.stringify(getEnabledStops(localSettings)) ===
+        JSON.stringify(getEnabledStops(initialSettings));
+
+    if (settingsMatch && initialSectionsRef.current.length > 0) {
+      // Settings match - we can use server data immediately
+      // Check if initial sections have actual departure data
+      const hasInitialData = initialSectionsRef.current.some(
+        s => s.departures.length > 0 && !s.error
+      );
+      if (hasInitialData) {
+        setHasClientData(true);
+        isFirstFetchRef.current = false;
+      }
+    }
+
     setSettings(localSettings);
     setJsEnabled(true);
 
@@ -109,7 +135,7 @@ export function ClientEnhancements({
     return () => {
       mountedRef.current = false;
     };
-  }, []);
+  }, [initialSettings]);
 
   // Hide server board only after we have client data
   useEffect(() => {
@@ -141,9 +167,19 @@ export function ClientEnhancements({
   // Fetch departures for a list of stops with optional direction filters
   // Uses parallel fetching for better performance and preserves existing data on error
   const fetchDeparturesForStops = useCallback(async (
-    stops: EnabledStopInfo[]
+    stops: EnabledStopInfo[],
+    bustCache = false
   ) => {
+    // If no stops configured, keep showing initial server data if available
+    // Only clear if this is intentional (user has no stops configured)
     if (stops.length === 0) {
+      // If we have initial server data and this is first fetch, keep showing it
+      // This prevents flashing empty state when localStorage differs from cookies
+      if (isFirstFetchRef.current && initialSectionsRef.current.length > 0) {
+        // Don't clear - keep showing server data
+        isFirstFetchRef.current = false;
+        return;
+      }
       setSections([]);
       setHasClientData(true);
       return;
@@ -172,6 +208,12 @@ export function ClientEnhancements({
           limit: String(fetchLimit),
           maxMinutes: String(settings.maxMinutes),
         });
+
+        // Add cache-busting parameter when returning from background
+        // This ensures we get fresh data instead of stale cached responses
+        if (bustCache) {
+          params.set('_t', String(Date.now()));
+        }
 
         const response = await fetch(`/api/departures?${params.toString()}`);
 
@@ -223,9 +265,21 @@ export function ClientEnhancements({
     const newSections = await Promise.all(fetchPromises);
 
     if (mountedRef.current) {
+      // Check if we got any valid data
+      const hasValidData = newSections.some(s => s.departures.length > 0 && !s.error);
+
       // Merge new sections with existing data: if a new section has an error or no departures,
       // try to keep the previous data for that section (better than showing nothing)
       setSections(prevSections => {
+        // If all fetches failed and we have previous data, keep it entirely
+        if (!hasValidData && prevSections.length > 0) {
+          // Check if previous sections have data
+          const prevHasData = prevSections.some(s => s.departures.length > 0);
+          if (prevHasData) {
+            return prevSections; // Keep all previous data
+          }
+        }
+
         return newSections.map(newSection => {
           // If new section has data, use it
           if (newSection.departures.length > 0 && !newSection.error) {
@@ -246,17 +300,35 @@ export function ClientEnhancements({
             };
           }
 
+          // Also check initial server data as a last resort
+          const initialSection = initialSectionsRef.current.find(
+            is => is.stopId === newSection.stopId && is.mode === newSection.mode
+          );
+          if (initialSection && initialSection.departures.length > 0 && !initialSection.error) {
+            return {
+              ...initialSection,
+              stopName: newSection.stopName || initialSection.stopName,
+            };
+          }
+
           // No previous data, use new (possibly empty) section
           return newSection;
         });
       });
       setFetchedAt(new Date().toISOString());
-      setHasClientData(true);
+
+      // Only set hasClientData=true if we have actual data to show
+      // This prevents hiding the server board when we have nothing to replace it with
+      if (hasValidData) {
+        setHasClientData(true);
+      }
+
+      isFirstFetchRef.current = false;
     }
   }, [settings.departuresPerMode, settings.maxMinutes, settings.activeProvider]);
 
   // Fetch departures based on current mode (home or nearby)
-  const fetchDepartures = useCallback(async () => {
+  const fetchDepartures = useCallback(async (bustCache = false) => {
     if (settings.nearbyMode) {
       // In nearby mode, use nearby stops (no direction filter - show all directions)
       if (nearbyStops.length > 0) {
@@ -265,13 +337,13 @@ export function ClientEnhancements({
           stop: ns.stop,
           // No direction filter for nearby mode - show all directions
         }));
-        await fetchDeparturesForStops(stops);
+        await fetchDeparturesForStops(stops, bustCache);
       }
       // If no nearby stops yet, they'll be fetched by location detection
     } else {
       // In home mode, use configured stops (with their direction filters)
       const enabledStops = getEnabledStops(settings);
-      await fetchDeparturesForStops(enabledStops);
+      await fetchDeparturesForStops(enabledStops, bustCache);
     }
   }, [settings, nearbyStops, fetchDeparturesForStops]);
 
@@ -390,14 +462,16 @@ export function ClientEnhancements({
             fetchNearbyStops(false);
           } else if (isStale) {
             // Location is fresh but departures are stale - fetch in background (no await)
-            fetchDepartures().then(() => {
+            // Use cache-busting to ensure fresh data from server
+            fetchDepartures(true).then(() => {
               lastFetchTime = Date.now();
             });
           }
         } else if (isStale) {
           // Home mode - fetch fresh data in background (no await)
           // User sees cached/buffered data immediately
-          fetchDepartures().then(() => {
+          // Use cache-busting to ensure fresh data from server
+          fetchDepartures(true).then(() => {
             lastFetchTime = Date.now();
           });
         }
@@ -437,13 +511,28 @@ export function ClientEnhancements({
     };
   }, [jsEnabled, settings.refreshInterval, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
 
+  // Track if the settings effect has run before
+  const settingsEffectRanRef = useRef(false);
+
   // Fetch when settings change (home mode)
+  const settingsProviderKey = JSON.stringify(settings.providers);
   useEffect(() => {
     if (!jsEnabled) return;
     if (settings.nearbyMode) return; // Handled by nearby mode effect
+
+    // On initial mount, skip fetch if we've already determined server data is usable
+    // (this happens when settings match and server provided valid data)
+    if (!settingsEffectRanRef.current) {
+      settingsEffectRanRef.current = true;
+      // If isFirstFetchRef is false, it means hydration already confirmed server data is good
+      if (!isFirstFetchRef.current && hasClientData) {
+        return;
+      }
+    }
+
     fetchDepartures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jsEnabled, settings.nearbyMode, settings.activeProvider, JSON.stringify(settings.providers)]);
+  }, [jsEnabled, settings.nearbyMode, settings.activeProvider, settingsProviderKey]);
 
   // Fetch when nearby stops are available (nearby mode)
   useEffect(() => {
@@ -482,16 +571,20 @@ export function ClientEnhancements({
 
   return (
     <>
-      {/* Client-rendered board (replaces server-rendered one) */}
-      <CombinedBoard
-        sections={sections}
-        settings={settings}
-        fetchedAt={fetchedAt}
-        onSettingsClick={() => setIsSettingsOpen(true)}
-        onProviderChange={handleProviderChange}
-        now={now}
-        isLoadingNearby={isLoadingNearby}
-      />
+      {/* Client-rendered board (replaces server-rendered one)
+          Only render when we have client data - prevents both boards being visible
+          simultaneously which causes styling conflicts */}
+      {hasClientData && (
+        <CombinedBoard
+          sections={sections}
+          settings={settings}
+          fetchedAt={fetchedAt}
+          onSettingsClick={() => setIsSettingsOpen(true)}
+          onProviderChange={handleProviderChange}
+          now={now}
+          isLoadingNearby={isLoadingNearby}
+        />
+      )}
 
       {/* Settings modal */}
       <SettingsModal
