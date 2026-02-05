@@ -13,7 +13,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { DeparturesResponse, TransportMode } from '@/lib/providers/types';
 import { ProviderId } from '@/lib/providers';
 import { DEFAULT_REFRESH_INTERVAL } from '@/lib/config';
-import { DepartureBoard } from '@/components/DepartureBoard';
+import { SingleStopBoard } from '@/components/SingleStopBoard';
 import { RefreshController } from '@/components/RefreshController';
 
 interface BoardClientProps {
@@ -92,7 +92,7 @@ export function BoardClient({
       onRefresh={refreshData}
       enableMetaRefresh={true}
     >
-      <DepartureBoard
+      <SingleStopBoard
         data={data}
         title={title}
         filterMode={mode}

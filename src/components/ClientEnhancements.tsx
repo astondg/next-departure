@@ -3,14 +3,12 @@
 /**
  * ClientEnhancements Component
  *
- * Provides JavaScript enhancements when available:
- * - Settings modal (instead of navigating to /settings)
- * - Client-side auto-refresh (smoother than meta refresh)
- * - Location detection for nearby stops
- * - Live clock updates
+ * Main departure board with progressive enhancement:
+ * - Server renders full HTML (works without JS)
+ * - Client hydrates and adds: auto-refresh, settings modal, animations
  *
- * If JS doesn't work, this component does nothing and the
- * server-rendered board works via meta refresh.
+ * This is a Client Component but it also renders on the server.
+ * The initial HTML works without JavaScript via meta refresh fallback.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -26,7 +24,7 @@ import {
   EnabledStopInfo,
 } from '@/lib/utils/storage';
 import { ProviderId } from '@/lib/providers';
-import { CombinedBoard } from './CombinedBoard';
+import { DepartureBoard } from './DepartureBoard';
 import { SettingsModal } from './SettingsModal';
 
 interface ModeSection {
@@ -56,8 +54,8 @@ export function ClientEnhancements({
   initialSections,
   initialFetchedAt,
 }: ClientEnhancementsProps) {
-  // Track if JS is working
-  const [jsEnabled, setJsEnabled] = useState(false);
+  // Track if JS has hydrated (for enabling client-only features)
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Settings state - start with initial settings from server (cookies)
   const [settings, setSettings] = useState<UserSettings>(() => ({
@@ -84,17 +82,13 @@ export function ClientEnhancements({
   // Store initial sections to use as fallback
   const initialSectionsRef = useRef<ModeSection[]>(initialSections);
 
-  // Track if we've received client data (don't hide server board until then)
-  // Only set to true when we have actual departure data to show
-  const [hasClientData, setHasClientData] = useState(false);
-
-  // Enable JS features after hydration
+  // Hydration effect - runs only on client after initial render
   useEffect(() => {
     // Load settings from localStorage (may have more recent data than cookies)
     const localSettings = loadSettings();
 
     // Check if localStorage settings match the initial server settings
-    // If they match and we have initial data, we can use server data directly
+    // If they differ, we'll need to refetch with the correct settings
     const settingsMatch =
       localSettings.activeProvider === initialSettings.activeProvider &&
       !localSettings.nearbyMode && // Nearby mode always needs fresh fetch
@@ -102,28 +96,12 @@ export function ClientEnhancements({
         JSON.stringify(getEnabledStops(initialSettings));
 
     if (settingsMatch && initialSectionsRef.current.length > 0) {
-      // Settings match - we can use server data immediately
-      // Check if initial sections have actual departure data
-      const hasInitialData = initialSectionsRef.current.some(
-        s => s.departures.length > 0 && !s.error
-      );
-      if (hasInitialData) {
-        setHasClientData(true);
-        isFirstFetchRef.current = false;
-      }
+      // Settings match - server data is valid, no need to refetch
+      isFirstFetchRef.current = false;
     }
 
     setSettings(localSettings);
-    setJsEnabled(true);
-
-    // Intercept settings link clicks to open modal instead
-    const settingsLink = document.getElementById('settings-link');
-    if (settingsLink) {
-      settingsLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        setIsSettingsOpen(true);
-      });
-    }
+    setIsHydrated(true);
 
     // Register service worker for PWA offline support
     if ('serviceWorker' in navigator) {
@@ -137,32 +115,22 @@ export function ClientEnhancements({
     };
   }, [initialSettings]);
 
-  // Hide server board only after we have client data
+  // Update clock every second (only after hydration)
   useEffect(() => {
-    if (hasClientData) {
-      const serverBoard = document.getElementById('departure-board');
-      if (serverBoard) {
-        serverBoard.style.display = 'none';
-      }
-    }
-  }, [hasClientData]);
-
-  // Update clock every second
-  useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
 
     const interval = setInterval(() => {
       setNow(new Date());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [jsEnabled]);
+  }, [isHydrated]);
 
   // Save settings when they change
   useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
     saveSettings(settings);
-  }, [jsEnabled, settings]);
+  }, [isHydrated, settings]);
 
   // Fetch departures for a list of stops with optional direction filters
   // Uses parallel fetching for better performance and preserves existing data on error
@@ -181,7 +149,6 @@ export function ClientEnhancements({
         return;
       }
       setSections([]);
-      setHasClientData(true);
       return;
     }
 
@@ -316,13 +283,6 @@ export function ClientEnhancements({
         });
       });
       setFetchedAt(new Date().toISOString());
-
-      // Only set hasClientData=true if we have actual data to show
-      // This prevents hiding the server board when we have nothing to replace it with
-      if (hasValidData) {
-        setHasClientData(true);
-      }
-
       isFirstFetchRef.current = false;
     }
   }, [settings.departuresPerMode, settings.maxMinutes, settings.activeProvider]);
@@ -416,11 +376,11 @@ export function ClientEnhancements({
         maximumAge: 60000, // Cache location for 1 minute
       }
     );
-  }, [settings.nearbyStopsPerMode]);
+  }, [settings.nearbyStopsPerMode, settings.activeProvider]);
 
-  // Auto-refresh with visibility handling
+  // Auto-refresh with visibility handling (only after hydration)
   useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
 
     let isVisible = !document.hidden;
     let lastFetchTime = Date.now();
@@ -509,7 +469,7 @@ export function ClientEnhancements({
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [jsEnabled, settings.refreshInterval, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
+  }, [isHydrated, settings.refreshInterval, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
 
   // Track if the settings effect has run before
   const settingsEffectRanRef = useRef(false);
@@ -517,7 +477,7 @@ export function ClientEnhancements({
   // Fetch when settings change (home mode)
   const settingsProviderKey = JSON.stringify(settings.providers);
   useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
     if (settings.nearbyMode) return; // Handled by nearby mode effect
 
     // On initial mount, skip fetch if we've already determined server data is usable
@@ -525,32 +485,32 @@ export function ClientEnhancements({
     if (!settingsEffectRanRef.current) {
       settingsEffectRanRef.current = true;
       // If isFirstFetchRef is false, it means hydration already confirmed server data is good
-      if (!isFirstFetchRef.current && hasClientData) {
+      if (!isFirstFetchRef.current) {
         return;
       }
     }
 
     fetchDepartures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jsEnabled, settings.nearbyMode, settings.activeProvider, settingsProviderKey]);
+  }, [isHydrated, settings.nearbyMode, settings.activeProvider, settingsProviderKey]);
 
   // Fetch when nearby stops are available (nearby mode)
   useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
     if (!settings.nearbyMode) return;
     if (nearbyStops.length === 0) return;
 
     fetchDepartures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jsEnabled, settings.nearbyMode, nearbyStops]);
+  }, [isHydrated, settings.nearbyMode, nearbyStops]);
 
   // Detect location when nearby mode is enabled
   useEffect(() => {
-    if (!jsEnabled) return;
+    if (!isHydrated) return;
     if (!settings.nearbyMode) return;
 
     fetchNearbyStops(true);
-  }, [jsEnabled, settings.nearbyMode, fetchNearbyStops]);
+  }, [isHydrated, settings.nearbyMode, fetchNearbyStops]);
 
   // Handle settings change
   const handleSettingsChange = useCallback((newSettings: UserSettings) => {
@@ -564,37 +524,30 @@ export function ClientEnhancements({
     saveSettings(newSettings);
   }, [settings]);
 
-  // Don't render anything until JS is confirmed working
-  if (!jsEnabled) {
-    return null;
-  }
-
   return (
     <>
-      {/* Client-rendered board (replaces server-rendered one)
-          Only render when we have client data - prevents both boards being visible
-          simultaneously which causes styling conflicts */}
-      {hasClientData && (
-        <CombinedBoard
-          sections={sections}
+      {/* Single departure board - server-rendered, then enhanced on client */}
+      <DepartureBoard
+        sections={sections}
+        settings={settings}
+        fetchedAt={fetchedAt}
+        onSettingsClick={isHydrated ? () => setIsSettingsOpen(true) : undefined}
+        onProviderChange={isHydrated ? handleProviderChange : undefined}
+        now={now}
+        isLoadingNearby={isLoadingNearby}
+      />
+
+      {/* Settings modal - only renders after hydration */}
+      {isHydrated && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
           settings={settings}
-          fetchedAt={fetchedAt}
-          onSettingsClick={() => setIsSettingsOpen(true)}
-          onProviderChange={handleProviderChange}
-          now={now}
+          onSettingsChange={handleSettingsChange}
+          nearbyStops={nearbyStops}
           isLoadingNearby={isLoadingNearby}
         />
       )}
-
-      {/* Settings modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={handleSettingsChange}
-        nearbyStops={nearbyStops}
-        isLoadingNearby={isLoadingNearby}
-      />
     </>
   );
 }
