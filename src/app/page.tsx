@@ -8,7 +8,6 @@
 
 import { Metadata } from 'next';
 import { cookies } from 'next/headers';
-import { ServerBoard } from '@/components/ServerBoard';
 import { ClientEnhancements } from '@/components/ClientEnhancements';
 import { TransportMode, Departure } from '@/lib/providers/types';
 import {
@@ -176,14 +175,7 @@ export default async function HomePage() {
         <meta httpEquiv="refresh" content={String(settings.refreshInterval)} />
       </noscript>
 
-      {/* Server-rendered departure board */}
-      <ServerBoard
-        sections={sections}
-        settings={settings}
-        fetchedAt={fetchedAt}
-      />
-
-      {/* Client-side enhancements (JS required) */}
+      {/* Single departure board - server-rendered, progressively enhanced */}
       <ClientEnhancements
         initialSettings={settings}
         initialSections={sections}
