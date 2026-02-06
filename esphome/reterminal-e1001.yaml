@@ -13,7 +13,7 @@
 #   - 2 min refresh during quiet hours (9pm-4am)
 
 substitutions:
-  board_url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1201:1&limit=3"
+  board_url: "https://next-departure.vercel.app/api/og/board/eink?stops=tram:2070,train:1201:1&limit=3&invert=true"
   # Set to "true" to enable sidebar layout with large weather panel (1/3 of screen)
   # Set to "false" to show sensor data in footer instead
   use_sidebar: "true"
@@ -90,6 +90,12 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  fast_connect: true
+  manual_ip:
+    static_ip: 192.168.50.136
+    gateway: 192.168.50.1
+    subnet: 255.255.255.0
+    dns1: 192.168.50.1
 
 time:
   - platform: sntp

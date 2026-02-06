@@ -86,7 +86,8 @@ async function fetchWeather(
 
     const data = await response.json();
     const timezone = data.timezone || "UTC";
-    const probabilities: number[] = data.hourly?.precipitation_probability || [];
+    const probabilities: number[] =
+      data.hourly?.precipitation_probability || [];
 
     // Find first hour from now where probability exceeds threshold
     const now = new Date();
@@ -334,13 +335,14 @@ export async function GET(request: NextRequest) {
   const lonParam = searchParams.get("lon");
   const lat = latParam ? parseFloat(latParam) : null;
   const lon = lonParam ? parseFloat(lonParam) : null;
-  const hasLocation = lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon);
+  const hasLocation =
+    lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon);
 
   // Timezone: prefer explicit tz param if provided, otherwise derive from weather API
   const tzParam = searchParams.get("tz");
 
   // Color inversion for dark mode e-ink displays
-  const invert = true; //searchParams.get('invert') === 'true';
+  const invert = searchParams.get("invert") === "true";
   const fg = invert ? "#ffffff" : "#000000"; // Foreground (text, borders)
   const bg = invert ? "#000000" : "#ffffff"; // Background
 
@@ -374,7 +376,8 @@ export async function GET(request: NextRequest) {
   const stopData = stopDataResults as StopData[];
 
   // Use explicit tz param if provided, otherwise derive from weather API, fallback to UTC
-  const timezone = tzParam || (weatherData as WeatherData | null)?.timezone || "UTC";
+  const timezone =
+    tzParam || (weatherData as WeatherData | null)?.timezone || "UTC";
   const stopCount = stopData.length;
 
   // Calculate total content rows (headers + departures + gaps)
