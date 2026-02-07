@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 esphome/secrets.yaml
+
+# OG image fonts (downloaded by scripts/download-fonts.mjs at build time)
+src/app/api/og/board/fonts/
