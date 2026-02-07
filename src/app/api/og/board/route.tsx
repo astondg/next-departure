@@ -31,6 +31,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
 import { TransportMode, Departure } from "@/lib/providers/types";
+import { getProvider } from "@/lib/providers";
 
 export const runtime = "nodejs";
 export const preferredRegion = "syd1";
@@ -166,7 +167,6 @@ function formatDepartureTime(
 }
 
 async function fetchStopDepartures(
-  baseUrl: string,
   mode: TransportMode,
   stopId: string,
   limit: number,
@@ -178,35 +178,13 @@ async function fetchStopDepartures(
     const fetchLimit =
       directionIds && directionIds.length > 0 ? (limit + 2) * 3 : limit + 2;
 
-    const params = new URLSearchParams({
-      provider: "ptv",
+    const provider = getProvider("ptv");
+    const result = await provider.getDepartures({
       stopId,
       mode,
-      limit: String(fetchLimit),
-      maxMinutes: String(maxMinutes),
+      limit: fetchLimit,
+      maxMinutes,
     });
-
-    const response = await fetch(
-      `${baseUrl}/api/departures?${params.toString()}`,
-      {
-        cache: "no-store", // Always fetch fresh data for the image
-      },
-    );
-
-    if (!response.ok) {
-      return {
-        mode,
-        stopId,
-        stopName: `${mode}:${stopId}`,
-        departures: [],
-        error:
-          response.status === 404
-            ? `Stop not found`
-            : `API error (${response.status})`,
-      };
-    }
-
-    const result = await response.json();
 
     // Check if stop data was returned
     if (!result.stop?.name) {
@@ -269,7 +247,6 @@ function parseStops(
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
   const { searchParams } = url;
 
   // Parse query parameters
@@ -351,14 +328,7 @@ export async function GET(request: NextRequest) {
       readFile(join(fontDir, "Inter-Regular.woff")),
       hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
       ...stopRequests.map(({ mode, stopId, directionIds }) =>
-        fetchStopDepartures(
-          baseUrl,
-          mode,
-          stopId,
-          limit,
-          maxMinutes,
-          directionIds,
-        ),
+        fetchStopDepartures(mode, stopId, limit, maxMinutes, directionIds),
       ),
     ]);
 
