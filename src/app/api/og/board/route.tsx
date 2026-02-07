@@ -32,20 +32,34 @@ import { TransportMode, Departure } from "@/lib/providers/types";
 
 export const runtime = "edge";
 
-// Load Inter font for crisp rendering
+// Load Inter fonts from local bundle (committed to repo).
+// Local fonts are co-located with the edge function — zero network overhead on cold starts.
+// Falls back to Google Fonts CDN if local files are missing.
 const interBold = fetch(
-  new URL(
-    "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff",
-    import.meta.url,
-  ),
-).then((res) => res.arrayBuffer());
+  new URL("./fonts/Inter-Bold.woff", import.meta.url),
+)
+  .then((res) => {
+    if (!res.ok) throw new Error("local font missing");
+    return res.arrayBuffer();
+  })
+  .catch(() =>
+    fetch(
+      "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff",
+    ).then((res) => res.arrayBuffer()),
+  );
 
 const interRegular = fetch(
-  new URL(
-    "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff",
-    import.meta.url,
-  ),
-).then((res) => res.arrayBuffer());
+  new URL("./fonts/Inter-Regular.woff", import.meta.url),
+)
+  .then((res) => {
+    if (!res.ok) throw new Error("local font missing");
+    return res.arrayBuffer();
+  })
+  .catch(() =>
+    fetch(
+      "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff",
+    ).then((res) => res.arrayBuffer()),
+  );
 
 interface StopData {
   mode: TransportMode;
@@ -1008,7 +1022,7 @@ export async function GET(request: NextRequest) {
     </div>
   ) : null;
 
-  return new ImageResponse(
+  const imageResponse = new ImageResponse(
     <div
       style={{
         display: "flex",
@@ -1039,9 +1053,20 @@ export async function GET(request: NextRequest) {
           weight: 400,
         },
       ],
-      headers: {
-        "Cache-Control": "public, max-age=30",
-      },
     },
   );
+
+  // Buffer the streamed ImageResponse so we can set Content-Length.
+  // ESPHome's online_image component requires Content-Length to allocate
+  // its PNG decode buffer. This eliminates the need for the separate
+  // /api/og/board/eink proxy route (saving a full HTTP round-trip).
+  const buffer = await imageResponse.arrayBuffer();
+
+  return new Response(buffer, {
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": buffer.byteLength.toString(),
+      "Cache-Control": "public, max-age=30",
+    },
+  });
 }
