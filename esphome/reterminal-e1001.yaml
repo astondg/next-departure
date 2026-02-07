@@ -54,7 +54,13 @@ esphome:
               id(humidity).state,
               id(battery_level).state);
             return std::string(url);
-      - delay: 5s
+      # Trigger the image download (set_url alone doesn't fetch)
+      - component.update: departure_image
+      # Wait for the download to actually complete instead of a fixed delay
+      - wait_until:
+          condition:
+            lambda: 'return id(image_downloaded);'
+          timeout: 20s
       - component.update: epaper_display
       - delay: 1s
       - lambda: |-
@@ -165,12 +171,30 @@ deep_sleep:
   run_duration: 30s
   sleep_duration: 1min
 
+globals:
+  - id: image_downloaded
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
 online_image:
   - id: departure_image
     url: "${board_url}" # Initial URL, updated dynamically with sensor data
     format: PNG
     type: BINARY
     resize: 800x480
+    update_interval: never # Only download when explicitly triggered
+    on_download_finished:
+      - globals.set:
+          id: image_downloaded
+          value: 'true'
+    on_error:
+      - logger.log:
+          level: ERROR
+          format: "Image download failed"
+      - globals.set:
+          id: image_downloaded
+          value: 'true'
 
 spi:
   clk_pin: GPIO7
