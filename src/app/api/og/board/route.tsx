@@ -30,7 +30,8 @@ import { ImageResponse } from "@vercel/og";
 import { NextRequest } from "next/server";
 import { TransportMode, Departure } from "@/lib/providers/types";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const preferredRegion = "syd1";
 
 // Load Inter fonts from local bundle (committed to repo).
 // Local fonts are co-located with the edge function — zero network overhead on cold starts.
