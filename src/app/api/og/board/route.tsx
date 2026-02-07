@@ -26,41 +26,14 @@
  *   - invert: invert colors for dark mode e-ink displays (default false, e.g., "true")
  */
 
-import { ImageResponse } from "@vercel/og";
+import { ImageResponse } from "next/og";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { NextRequest } from "next/server";
 import { TransportMode, Departure } from "@/lib/providers/types";
 
 export const runtime = "nodejs";
 export const preferredRegion = "syd1";
-
-// Load Inter fonts from local bundle (committed to repo).
-// Local fonts are co-located with the edge function — zero network overhead on cold starts.
-// Falls back to Google Fonts CDN if local files are missing.
-const interBold = fetch(
-  new URL("./fonts/Inter-Bold.woff", import.meta.url),
-)
-  .then((res) => {
-    if (!res.ok) throw new Error("local font missing");
-    return res.arrayBuffer();
-  })
-  .catch(() =>
-    fetch(
-      "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuGKYAZ9hjp-Ek-_EeA.woff",
-    ).then((res) => res.arrayBuffer()),
-  );
-
-const interRegular = fetch(
-  new URL("./fonts/Inter-Regular.woff", import.meta.url),
-)
-  .then((res) => {
-    if (!res.ok) throw new Error("local font missing");
-    return res.arrayBuffer();
-  })
-  .catch(() =>
-    fetch(
-      "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff",
-    ).then((res) => res.arrayBuffer()),
-  );
 
 interface StopData {
   mode: TransportMode;
@@ -370,11 +343,12 @@ export async function GET(request: NextRequest) {
   }
 
   // Load fonts, departure data, and weather in parallel
+  const fontDir = join(process.cwd(), "src/app/api/og/board/fonts");
   const stopRequests = parseStops(stopsParam);
   const [interBoldData, interRegularData, weatherData, ...stopDataResults] =
     await Promise.all([
-      interBold,
-      interRegular,
+      readFile(join(fontDir, "Inter-Bold.woff")),
+      readFile(join(fontDir, "Inter-Regular.woff")),
       hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
       ...stopRequests.map(({ mode, stopId, directionIds }) =>
         fetchStopDepartures(
