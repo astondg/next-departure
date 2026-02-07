@@ -1007,11 +1007,29 @@ export async function GET(request: NextRequest) {
   // /api/og/board/eink proxy route (saving a full HTTP round-trip).
   const buffer = await imageResponse.arrayBuffer();
 
+  // Compute dynamic refresh interval for e-ink devices
+  const nowMs = Date.now();
+  let soonestMinutes: number | null = null;
+  for (const stop of stopData) {
+    for (const dep of stop.departures) {
+      const depTime = new Date(dep.estimatedTime || dep.scheduledTime).getTime();
+      const minutesAway = (depTime - nowMs) / 60000;
+      if (minutesAway > 0 && (soonestMinutes === null || minutesAway < soonestMinutes)) {
+        soonestMinutes = minutesAway;
+      }
+    }
+  }
+  let refreshSeconds: number;
+  if (soonestMinutes === null || soonestMinutes > 10) refreshSeconds = 300;
+  else if (soonestMinutes > 5) refreshSeconds = 120;
+  else refreshSeconds = 60;
+
   return new Response(buffer, {
     headers: {
       "Content-Type": "image/png",
       "Content-Length": buffer.byteLength.toString(),
       "Cache-Control": "public, max-age=30",
+      "X-Next-Refresh": String(refreshSeconds),
     },
   });
 }
