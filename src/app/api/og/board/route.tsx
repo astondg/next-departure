@@ -32,9 +32,9 @@ import { TransportMode, Departure } from "@/lib/providers/types";
 
 export const runtime = "edge";
 
-// Load Inter fonts from local bundle (downloaded by scripts/download-fonts.mjs at build time).
+// Load Inter fonts from local bundle (committed to repo).
 // Local fonts are co-located with the edge function — zero network overhead on cold starts.
-// Falls back to Google Fonts CDN if local files are missing (e.g. dev without prebuild).
+// Falls back to Google Fonts CDN if local files are missing.
 const interBold = fetch(
   new URL("./fonts/Inter-Bold.woff", import.meta.url),
 )
