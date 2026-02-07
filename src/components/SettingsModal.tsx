@@ -666,24 +666,10 @@ export function SettingsModal({
                 </select>
               </label>
 
-              <label className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                 <span className="text-sm">Refresh interval</span>
-                <select
-                  value={settings.refreshInterval}
-                  onChange={(e) =>
-                    onSettingsChange({
-                      ...settings,
-                      refreshInterval: parseInt(e.target.value, 10),
-                    })
-                  }
-                  className="border border-black p-1 text-sm"
-                >
-                  <option value={15}>15 sec</option>
-                  <option value={30}>30 sec</option>
-                  <option value={60}>1 min</option>
-                  <option value={120}>2 min</option>
-                </select>
-              </label>
+                <span className="text-sm text-gray-500">Dynamic (1–5 min)</span>
+              </div>
 
               <label className="flex items-center gap-2">
                 <input

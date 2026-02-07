@@ -27,6 +27,30 @@ import { ProviderId } from '@/lib/providers';
 import { DepartureBoard } from './DepartureBoard';
 import { SettingsModal } from './SettingsModal';
 
+/**
+ * Compute the dynamic refresh interval based on how soon the next departure is.
+ * Tiers: >10 min → 5 min refresh, 5–10 min → 2 min, ≤5 min → 1 min.
+ * Returns seconds.
+ */
+function getDynamicRefreshInterval(sections: ModeSection[]): number {
+  const now = Date.now();
+  let soonestMinutes: number | null = null;
+
+  for (const section of sections) {
+    for (const dep of section.departures) {
+      const depTime = new Date(dep.estimatedTime || dep.scheduledTime).getTime();
+      const minutesAway = (depTime - now) / 60000;
+      if (minutesAway > 0 && (soonestMinutes === null || minutesAway < soonestMinutes)) {
+        soonestMinutes = minutesAway;
+      }
+    }
+  }
+
+  if (soonestMinutes === null || soonestMinutes > 10) return 300; // 5 min
+  if (soonestMinutes > 5) return 120;                             // 2 min
+  return 60;                                                       // 1 min
+}
+
 interface ModeSection {
   mode: TransportMode;
   stopId: string;
@@ -81,6 +105,8 @@ export function ClientEnhancements({
   const isFirstFetchRef = useRef(true);
   // Store initial sections to use as fallback
   const initialSectionsRef = useRef<ModeSection[]>(initialSections);
+  // Track latest sections for dynamic refresh interval computation
+  const sectionsRef = useRef<ModeSection[]>(sections);
 
   // Hydration effect - runs only on client after initial render
   useEffect(() => {
@@ -125,6 +151,11 @@ export function ClientEnhancements({
 
     return () => clearInterval(interval);
   }, [isHydrated]);
+
+  // Keep sectionsRef in sync for dynamic refresh interval
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
 
   // Save settings when they change
   useEffect(() => {
@@ -391,13 +422,14 @@ export function ClientEnhancements({
         clearTimeout(refreshTimeoutRef.current);
       }
 
+      const intervalMs = getDynamicRefreshInterval(sectionsRef.current) * 1000;
       refreshTimeoutRef.current = setTimeout(async () => {
         if (isVisible) {
           await fetchDepartures();
           lastFetchTime = Date.now();
         }
         scheduleRefresh();
-      }, settings.refreshInterval * 1000);
+      }, intervalMs);
     };
 
     // Handle page visibility changes (device lock, app background, tab switch)
@@ -409,9 +441,9 @@ export function ClientEnhancements({
         // This shows useful data instantly without waiting for a fetch
         setNow(new Date());
 
-        // Check if data is stale
+        // Check if data is stale (based on dynamic interval)
         const timeSinceLastFetch = Date.now() - lastFetchTime;
-        const isStale = timeSinceLastFetch > settings.refreshInterval * 1000;
+        const isStale = timeSinceLastFetch > getDynamicRefreshInterval(sectionsRef.current) * 1000;
 
         // In nearby mode, also check if location is stale (user may have moved)
         if (settings.nearbyMode) {
@@ -469,7 +501,7 @@ export function ClientEnhancements({
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [isHydrated, settings.refreshInterval, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
+  }, [isHydrated, settings.nearbyMode, fetchDepartures, fetchNearbyStops]);
 
   // Track if the settings effect has run before
   const settingsEffectRanRef = useRef(false);
