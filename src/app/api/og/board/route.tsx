@@ -36,6 +36,19 @@ import { getProvider } from "@/lib/providers";
 export const runtime = "nodejs";
 export const preferredRegion = "syd1";
 
+// Cache font data at module level to avoid disk reads on every request
+let _fontsPromise: Promise<{ bold: Buffer; regular: Buffer }> | null = null;
+function getFonts() {
+  if (!_fontsPromise) {
+    const dir = join(process.cwd(), "src/app/api/og/board/fonts");
+    _fontsPromise = Promise.all([
+      readFile(join(dir, "Inter-Bold.woff")),
+      readFile(join(dir, "Inter-Regular.woff")),
+    ]).then(([bold, regular]) => ({ bold, regular }));
+  }
+  return _fontsPromise;
+}
+
 interface StopData {
   mode: TransportMode;
   stopId: string;
@@ -75,16 +88,19 @@ async function fetchWeather(
 
     const data = await response.json();
     const timezone = data.timezone || "UTC";
+    const utcOffsetSeconds: number = data.utc_offset_seconds || 0;
     const probabilities: number[] =
       data.hourly?.precipitation_probability || [];
 
-    // Find first hour from now where probability exceeds threshold
-    const now = new Date();
-    // Convert to local hour using the timezone from the response
-    const localTime = new Date(
-      now.toLocaleString("en-US", { timeZone: timezone }),
+    // Compute current local hour using the UTC offset from the API response.
+    // This avoids parsing naive local time strings or using toLocaleString.
+    // The hourly array is indexed 0-23 mapping directly to local hours.
+    const nowMs = Date.now();
+    const currentHour = Math.floor(
+      (((nowMs + utcOffsetSeconds * 1000) % 86_400_000) + 86_400_000) %
+        86_400_000 /
+        3_600_000,
     );
-    const currentHour = localTime.getHours();
 
     for (let i = currentHour; i < probabilities.length && i < 24; i++) {
       if (probabilities[i] >= RAIN_PROBABILITY_THRESHOLD) {
@@ -319,18 +335,15 @@ export async function GET(request: NextRequest) {
     return new Response("Missing required parameter: stops", { status: 400 });
   }
 
-  // Load fonts, departure data, and weather in parallel
-  const fontDir = join(process.cwd(), "src/app/api/og/board/fonts");
+  // Load fonts (cached), departure data, and weather in parallel
   const stopRequests = parseStops(stopsParam);
-  const [interBoldData, interRegularData, weatherData, ...stopDataResults] =
-    await Promise.all([
-      readFile(join(fontDir, "Inter-Bold.woff")),
-      readFile(join(fontDir, "Inter-Regular.woff")),
-      hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
-      ...stopRequests.map(({ mode, stopId, directionIds }) =>
-        fetchStopDepartures(mode, stopId, limit, maxMinutes, directionIds),
-      ),
-    ]);
+  const [fonts, weatherData, ...stopDataResults] = await Promise.all([
+    getFonts(),
+    hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
+    ...stopRequests.map(({ mode, stopId, directionIds }) =>
+      fetchStopDepartures(mode, stopId, limit, maxMinutes, directionIds),
+    ),
+  ]);
 
   const stopData = stopDataResults as StopData[];
 
@@ -987,13 +1000,13 @@ export async function GET(request: NextRequest) {
       fonts: [
         {
           name: "Inter",
-          data: interBoldData,
+          data: fonts.bold,
           style: "normal",
           weight: 700,
         },
         {
           name: "Inter",
-          data: interRegularData,
+          data: fonts.regular,
           style: "normal",
           weight: 400,
         },
