@@ -75,27 +75,34 @@ async function fetchWeather(
 
     const data = await response.json();
     const timezone = data.timezone || "UTC";
+    const times: string[] = data.hourly?.time || [];
     const probabilities: number[] =
       data.hourly?.precipitation_probability || [];
 
-    // Find first hour from now where probability exceeds threshold
+    // Get current time to compare with forecast times
     const now = new Date();
-    // Convert to local hour using the timezone from the response
-    const localTime = new Date(
-      now.toLocaleString("en-US", { timeZone: timezone }),
-    );
-    const currentHour = localTime.getHours();
 
-    for (let i = currentHour; i < probabilities.length && i < 24; i++) {
-      if (probabilities[i] >= RAIN_PROBABILITY_THRESHOLD) {
-        return {
-          timezone,
-          rain: {
-            willRain: true,
-            hour: i,
-            probability: probabilities[i],
-          },
-        };
+    // Find first future hour where probability exceeds threshold
+    for (let i = 0; i < times.length && i < probabilities.length; i++) {
+      const forecastTime = new Date(times[i]);
+
+      // Only consider future hours (or current hour if we're early in the hour)
+      if (forecastTime >= now) {
+        if (probabilities[i] >= RAIN_PROBABILITY_THRESHOLD) {
+          // Extract the hour from the ISO timestamp string (format: "2026-02-08T14:00")
+          // This gives us the hour in the location's local timezone
+          const hourMatch = times[i].match(/T(\d{2}):/);
+          const hour = hourMatch ? parseInt(hourMatch[1], 10) : 0;
+
+          return {
+            timezone,
+            rain: {
+              willRain: true,
+              hour: hour,
+              probability: probabilities[i],
+            },
+          };
+        }
       }
     }
 
