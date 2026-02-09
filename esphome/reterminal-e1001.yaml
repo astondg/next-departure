@@ -9,8 +9,10 @@
 #   - sidebar=false: Full-width timetable with sensor data in footer
 #
 # Uses deep sleep for battery efficiency:
-#   - 1 min refresh during active hours (4am-9pm)
-#   - 2 min refresh during quiet hours (9pm-4am)
+#   - ~1 min total cycle during active hours (4am-9pm)
+#   - ~2 min total cycle during quiet hours (9pm-4am)
+# Sleep duration is dynamically reduced to compensate for run time
+# (WiFi, image download, etc.) so total cycle hits the target interval.
 
 substitutions:
   board_url: "https://next-departure.vercel.app/api/og/board?stops=tram:2070,train:1201:1&limit=3&invert=true"
@@ -66,8 +68,12 @@ esphome:
       - lambda: |-
           auto time = id(sntp_time).now();
           int hour = time.hour;
-          int sleep_mins = (hour >= 4 && hour < 21) ? 1 : 2;
-          id(deep_sleep_control).set_sleep_duration(sleep_mins * 60000);
+          int target_ms = (hour >= 4 && hour < 21) ? 60000 : 120000;
+          int run_time_ms = millis();
+          int sleep_ms = target_ms - run_time_ms;
+          if (sleep_ms < 10000) sleep_ms = 10000; // Minimum 10s sleep
+          ESP_LOGW("sleep", "Run time: %dms, sleeping: %dms", run_time_ms, sleep_ms);
+          id(deep_sleep_control).set_sleep_duration(sleep_ms);
       - deep_sleep.enter: deep_sleep_control
 
 esp32:
