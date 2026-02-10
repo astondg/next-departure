@@ -400,8 +400,9 @@ export class TfnswClient implements TransitProvider {
 
       const stop = this.convertStopFinderLocation(loc);
 
-      // Filter by mode if specified
-      if (mode && !stop.modes.includes(mode)) continue;
+      // Filter by mode if specified (only if the API returned mode data;
+      // coord searches may omit productClasses, relying on anyObjFilter_sf instead)
+      if (mode && stop.modes.length > 0 && !stop.modes.includes(mode)) continue;
 
       // Compute distance if coordinates are available
       if (!stop.location) continue;
