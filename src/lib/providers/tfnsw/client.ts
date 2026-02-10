@@ -361,7 +361,7 @@ export class TfnswClient implements TransitProvider {
   }
 
   /**
-   * Find stops near a geographic location
+   * Find stops near a geographic location using the /coord endpoint
    */
   async getNearbyStops(
     latitude: number,
@@ -370,21 +370,14 @@ export class TfnswClient implements TransitProvider {
     maxDistance: number = 500
   ): Promise<(Stop & { distance: number })[]> {
     const params: Record<string, string> = {
-      type_sf: 'coord',
-      name_sf: `${longitude}:${latitude}:EPSG:4326`,
+      coord: `${longitude}:${latitude}:EPSG:4326`,
+      inclFilter: '1',
+      type_1: 'BUS_POINT',
       radius_1: String(maxDistance),
-      TfNSWSF: 'true',
+      PoisOnMapMacro: 'true',
     };
 
-    // Filter by mode using anyObjFilter_sf param
-    if (mode) {
-      const productClass = MODE_TO_PRODUCT_CLASS[mode];
-      if (productClass !== undefined) {
-        params.anyObjFilter_sf = String(productClass);
-      }
-    }
-
-    const response = await this.request<TfnswStopFinderResponse>('stop_finder', params);
+    const response = await this.request<TfnswStopFinderResponse>('coord', params);
 
     if (!response.locations) {
       return [];
@@ -400,8 +393,7 @@ export class TfnswClient implements TransitProvider {
 
       const stop = this.convertStopFinderLocation(loc);
 
-      // Filter by mode if specified (only if the API returned mode data;
-      // coord searches may omit productClasses, relying on anyObjFilter_sf instead)
+      // Filter by mode if specified
       if (mode && stop.modes.length > 0 && !stop.modes.includes(mode)) continue;
 
       // Compute distance if coordinates are available
@@ -412,8 +404,6 @@ export class TfnswClient implements TransitProvider {
         stop.location.latitude,
         stop.location.longitude
       );
-
-      if (distance > maxDistance) continue;
 
       results.push({ ...stop, distance: Math.round(distance) });
     }
