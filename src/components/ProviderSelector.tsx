@@ -7,20 +7,19 @@
  * Shows the current provider and available alternatives.
  */
 
-import { ProviderId, PROVIDER_INFO, listProviders, isProviderAvailable } from '@/lib/providers';
+import { ProviderId, PROVIDER_INFO } from '@/lib/providers';
 
 interface ProviderSelectorProps {
   activeProvider: ProviderId;
   onProviderChange: (providerId: ProviderId) => void;
+  availableProviders?: ProviderId[];
 }
 
 export function ProviderSelector({
   activeProvider,
   onProviderChange,
+  availableProviders = [],
 }: ProviderSelectorProps) {
-  const allProviders = listProviders();
-  const availableProviders = allProviders.filter(isProviderAvailable);
-
   // If only one provider is available, don't show the selector
   if (availableProviders.length <= 1) {
     return (
