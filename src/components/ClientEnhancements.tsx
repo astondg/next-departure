@@ -71,12 +71,14 @@ interface ClientEnhancementsProps {
   initialSettings: UserSettings;
   initialSections: ModeSection[];
   initialFetchedAt: string;
+  availableProviders: ProviderId[];
 }
 
 export function ClientEnhancements({
   initialSettings,
   initialSections,
   initialFetchedAt,
+  availableProviders,
 }: ClientEnhancementsProps) {
   // Track if JS has hydrated (for enabling client-only features)
   const [isHydrated, setIsHydrated] = useState(false);
@@ -565,6 +567,7 @@ export function ClientEnhancements({
         fetchedAt={fetchedAt}
         onSettingsClick={isHydrated ? () => setIsSettingsOpen(true) : undefined}
         onProviderChange={isHydrated ? handleProviderChange : undefined}
+        availableProviders={availableProviders}
         now={now}
         isLoadingNearby={isLoadingNearby}
       />
@@ -576,6 +579,7 @@ export function ClientEnhancements({
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
           onSettingsChange={handleSettingsChange}
+          availableProviders={availableProviders}
           nearbyStops={nearbyStops}
           isLoadingNearby={isLoadingNearby}
         />

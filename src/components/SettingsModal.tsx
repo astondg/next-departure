@@ -21,13 +21,14 @@ import {
   setActiveProvider,
 } from '@/lib/utils/storage';
 import { TransportIcon, getModeLabel } from './TransportIcon';
-import { ProviderId, PROVIDER_INFO, listProviders, isProviderAvailable } from '@/lib/providers';
+import { ProviderId, PROVIDER_INFO } from '@/lib/providers';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: UserSettings;
   onSettingsChange: (settings: UserSettings) => void;
+  availableProviders?: ProviderId[];
   nearbyStops?: { mode: TransportMode; stop: Stop; distance: number }[];
   isLoadingNearby?: boolean;
 }
@@ -424,6 +425,7 @@ export function SettingsModal({
   onClose,
   settings,
   onSettingsChange,
+  availableProviders = [],
   nearbyStops = [],
   isLoadingNearby = false,
 }: SettingsModalProps) {
@@ -486,7 +488,6 @@ export function SettingsModal({
 
           {/* Provider selector */}
           {(() => {
-            const availableProviders = listProviders().filter(isProviderAvailable);
             if (availableProviders.length > 1) {
               return (
                 <div className="mb-6">

@@ -39,6 +39,7 @@ interface DepartureBoardProps {
   fetchedAt: string;
   onSettingsClick?: () => void;
   onProviderChange?: (providerId: ProviderId) => void;
+  availableProviders?: ProviderId[];
   now?: Date;
   isLoadingNearby?: boolean;
 }
@@ -334,6 +335,7 @@ export function DepartureBoard({
   fetchedAt,
   onSettingsClick,
   onProviderChange,
+  availableProviders,
   now = new Date(),
   isLoadingNearby = false,
 }: DepartureBoardProps) {
@@ -451,6 +453,7 @@ export function DepartureBoard({
           <ProviderSelector
             activeProvider={settings.activeProvider}
             onProviderChange={onProviderChange}
+            availableProviders={availableProviders}
           />
         ) : (
           <span>Next Departure</span>

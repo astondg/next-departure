@@ -15,7 +15,7 @@ import {
   DEFAULT_SETTINGS,
   getEnabledStops as getEnabledStopsFromSettings,
 } from '@/lib/utils/storage';
-import { getProvider, isProviderAvailable, ProviderId } from '@/lib/providers';
+import { getProvider, isProviderAvailable, listAvailableProviders, ProviderId } from '@/lib/providers';
 
 export const metadata: Metadata = {
   title: 'Next Departure - E-ink Transit Display',
@@ -180,6 +180,7 @@ export default async function HomePage() {
         initialSettings={settings}
         initialSections={sections}
         initialFetchedAt={fetchedAt}
+        availableProviders={listAvailableProviders()}
       />
     </>
   );
