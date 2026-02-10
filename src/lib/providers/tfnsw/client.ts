@@ -71,6 +71,25 @@ const TFNSW_CONFIG: ProviderConfig = {
 };
 
 /**
+ * Haversine distance between two points in meters
+ */
+function haversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth's radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
  * TfNSW API Client
  */
 export class TfnswClient implements TransitProvider {
@@ -339,6 +358,68 @@ export class TfnswClient implements TransitProvider {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Find stops near a geographic location
+   */
+  async getNearbyStops(
+    latitude: number,
+    longitude: number,
+    mode?: TransportMode,
+    maxDistance: number = 500
+  ): Promise<(Stop & { distance: number })[]> {
+    const params: Record<string, string> = {
+      type_sf: 'coord',
+      name_sf: `${longitude}:${latitude}:EPSG:4326`,
+      radius_1: String(maxDistance),
+      TfNSWSF: 'true',
+    };
+
+    // Filter by mode using anyObjFilter_sf param
+    if (mode) {
+      const productClass = MODE_TO_PRODUCT_CLASS[mode];
+      if (productClass !== undefined) {
+        params.anyObjFilter_sf = String(productClass);
+      }
+    }
+
+    const response = await this.request<TfnswStopFinderResponse>('stop_finder', params);
+
+    if (!response.locations) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const results: (Stop & { distance: number })[] = [];
+
+    for (const loc of response.locations) {
+      if (loc.type !== 'stop' && loc.type !== 'platform') continue;
+      if (seen.has(loc.id)) continue;
+      seen.add(loc.id);
+
+      const stop = this.convertStopFinderLocation(loc);
+
+      // Filter by mode if specified
+      if (mode && !stop.modes.includes(mode)) continue;
+
+      // Compute distance if coordinates are available
+      if (!stop.location) continue;
+      const distance = haversineDistance(
+        latitude,
+        longitude,
+        stop.location.latitude,
+        stop.location.longitude
+      );
+
+      if (distance > maxDistance) continue;
+
+      results.push({ ...stop, distance: Math.round(distance) });
+    }
+
+    results.sort((a, b) => a.distance - b.distance);
+
+    return results;
   }
 }
 

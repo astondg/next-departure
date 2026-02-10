@@ -11,8 +11,10 @@ import {
   isProviderAvailable,
   ProviderId,
   TransportMode,
+  Stop,
 } from '@/lib/providers';
 import { createPtvClient } from '@/lib/providers/ptv';
+import { createTfnswClient } from '@/lib/providers/tfnsw/client';
 
 /**
  * GET /api/nearby
@@ -73,21 +75,35 @@ export async function GET(request: NextRequest) {
     // Parse optional distance
     const maxDistance = distanceStr ? parseInt(distanceStr, 10) : 500;
 
-    // Currently only PTV is supported
-    if (provider !== 'ptv') {
-      return NextResponse.json(
-        { error: `Provider ${provider} does not support nearby search` },
-        { status: 400 }
-      );
-    }
+    let stops: (Stop & { distance: number })[];
 
-    const client = createPtvClient();
-    const stops = await client.getNearbyStops(
-      latitude,
-      longitude,
-      mode || undefined,
-      maxDistance
-    );
+    switch (provider) {
+      case 'ptv': {
+        const ptvClient = createPtvClient();
+        stops = await ptvClient.getNearbyStops(
+          latitude,
+          longitude,
+          mode || undefined,
+          maxDistance
+        );
+        break;
+      }
+      case 'tfnsw': {
+        const tfnswClient = createTfnswClient();
+        stops = await tfnswClient.getNearbyStops(
+          latitude,
+          longitude,
+          mode || undefined,
+          maxDistance
+        );
+        break;
+      }
+      default:
+        return NextResponse.json(
+          { error: `Provider ${provider} does not support nearby search` },
+          { status: 400 }
+        );
+    }
 
     return NextResponse.json(
       { stops },
