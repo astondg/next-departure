@@ -29,7 +29,7 @@ export interface TfnswLocation {
   name: string;
   disassembledName?: string;
   type: string;
-  coord?: [number, number]; // [longitude, latitude]
+  coord?: [number, number]; // [latitude, longitude]
   parent?: {
     id: string;
     name: string;

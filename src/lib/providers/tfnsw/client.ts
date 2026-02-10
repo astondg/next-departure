@@ -153,8 +153,8 @@ export class TfnswClient implements TransitProvider {
       modes,
       location: location.coord
         ? {
-            latitude: location.coord[1],
-            longitude: location.coord[0],
+            latitude: location.coord[0],
+            longitude: location.coord[1],
           }
         : undefined,
     };
@@ -208,18 +208,18 @@ export class TfnswClient implements TransitProvider {
    * Fetch departures from a stop
    */
   async getDepartures(query: DeparturesQuery): Promise<DeparturesResponse> {
-    // Build date/time parameters
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
-    const timeStr = now.toTimeString().slice(0, 5).replace(':', ''); // HHMM
 
+    // Omit itdDate/itdTime — the TfNSW API defaults to its own server clock
+    // (Sydney time). Sending these from a UTC server (e.g. Vercel) causes a
+    // timezone mismatch: the API interprets UTC values as AEDT, returning
+    // departures from hours in the past whose 40-result window never reaches now.
     const params: Record<string, string> = {
       mode: 'direct',
       type_dm: 'stop',
       name_dm: query.stopId,
       depArrMacro: 'dep',
-      itdDate: dateStr,
-      itdTime: timeStr,
+      departureMonitorMacro: 'true',
       TfNSWDM: 'true',
     };
 
@@ -245,8 +245,8 @@ export class TfnswClient implements TransitProvider {
       modes: [],
       location: firstEvent.location.coord
         ? {
-            latitude: firstEvent.location.coord[1],
-            longitude: firstEvent.location.coord[0],
+            latitude: firstEvent.location.coord[0],
+            longitude: firstEvent.location.coord[1],
           }
         : undefined,
     };
