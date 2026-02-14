@@ -239,8 +239,14 @@ export class PtvClient implements TransitProvider {
       }
     }
 
+    // Deduplicate departures - the PTV API can return the same train service
+    // under multiple route IDs when lines share track sections through a station
+    const uniqueDepartures = Array.from(
+      new Map(allDepartures.map((dep) => [dep.id, dep])).values()
+    );
+
     // Sort all departures by time
-    allDepartures.sort((a, b) => {
+    uniqueDepartures.sort((a, b) => {
       const timeA = a.estimatedTime || a.scheduledTime;
       const timeB = b.estimatedTime || b.scheduledTime;
       return new Date(timeA).getTime() - new Date(timeB).getTime();
@@ -248,8 +254,8 @@ export class PtvClient implements TransitProvider {
 
     // Apply limit across all departures
     const limitedDepartures = query.limit
-      ? allDepartures.slice(0, query.limit)
-      : allDepartures;
+      ? uniqueDepartures.slice(0, query.limit)
+      : uniqueDepartures;
 
     // Filter by max minutes if specified
     const now = new Date();
