@@ -239,11 +239,22 @@ export class PtvClient implements TransitProvider {
       }
     }
 
-    // Deduplicate departures - the PTV API can return the same train service
-    // under multiple route IDs when lines share track sections through a station
-    const uniqueDepartures = Array.from(
-      new Map(allDepartures.map((dep) => [dep.id, dep])).values()
-    );
+    // Deduplicate departures - the PTV API can return the same physical service
+    // under multiple route IDs when lines share track sections through a station.
+    // For trains, deduplicate by scheduled time + direction since only one train
+    // can depart a platform at a given time. Prefer the entry with express info.
+    const deduped = new Map<string, Departure>();
+    for (const dep of allDepartures) {
+      const key =
+        dep.mode === 'train'
+          ? `${dep.scheduledTime}-${dep.destination}`
+          : dep.id;
+      const existing = deduped.get(key);
+      if (!existing || (dep.expressStopCount && !existing.expressStopCount)) {
+        deduped.set(key, dep);
+      }
+    }
+    const uniqueDepartures = Array.from(deduped.values());
 
     // Sort all departures by time
     uniqueDepartures.sort((a, b) => {
