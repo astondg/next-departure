@@ -539,7 +539,6 @@ export async function GET(request: NextRequest) {
                 departure.estimatedTime,
                 showAbsolute,
               );
-              const isDeparting = timeInfo.display === "now";
               const isTrain = departure.mode === "train";
               const isExpress =
                 departure.expressStopCount && departure.expressStopCount > 0;
@@ -553,14 +552,11 @@ export async function GET(request: NextRequest) {
                     alignItems: "center",
                     height: `${rowHeight}px`,
                     padding: `0 ${padding + 4}px`,
-                    borderTop: isDeparting
-                      ? `${borderWidth}px solid ${bg}`
-                      : "none",
                     borderBottom: isLastInSection
                       ? "none"
                       : `${borderWidth}px solid ${fg}`,
-                    backgroundColor: isDeparting ? fg : bg,
-                    color: isDeparting ? bg : fg,
+                    backgroundColor: bg,
+                    color: fg,
                   }}
                 >
                   {/* Route number - hide for trains (redundant with destination) */}
@@ -606,7 +602,7 @@ export async function GET(request: NextRequest) {
                         fontSize: `${fontSize.destination}px`,
                         fontWeight: 700,
                         padding: `${Math.round(2 * fontScale)}px 0`,
-                        border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? bg : fg}`,
+                        border: `${Math.round(2 * fontScale)}px solid ${fg}`,
                         marginRight: `${Math.round(8 * fontScale)}px`,
                         minWidth: `${Math.round(28 * fontScale)}px`,
                         flexShrink: 0,
@@ -624,7 +620,7 @@ export async function GET(request: NextRequest) {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: `${fontSize.destination}px`,
-                        border: `${Math.round(2 * fontScale)}px solid ${isDeparting ? bg : fg}`,
+                        border: `${Math.round(2 * fontScale)}px solid ${fg}`,
                         padding: `${Math.round(2 * fontScale)}px 0`,
                         fontWeight: 700,
                         marginRight: `${Math.round(8 * fontScale)}px`,

@@ -63,6 +63,21 @@ esphome:
           condition:
             lambda: 'return id(image_downloaded);'
           timeout: 20s
+      - lambda: |-
+          // RTC_DATA_ATTR survives deep sleep (stored in RTC slow memory)
+          static RTC_DATA_ATTR int rtc_refresh_counter = 0;
+
+          ESP_LOGI("display", "Refresh counter: %d (full refresh every 10)", rtc_refresh_counter);
+
+          if (rtc_refresh_counter % 10 == 0) {
+            ESP_LOGI("display", "Full refresh");
+            id(epaper_display).set_full_update_every(1);
+          } else {
+            ESP_LOGI("display", "Partial refresh");
+            id(epaper_display).set_full_update_every(999);
+          }
+
+          rtc_refresh_counter = (rtc_refresh_counter + 1) % 10;
       - component.update: epaper_display
       - delay: 1s
       - lambda: |-
@@ -210,7 +225,7 @@ display:
   - platform: waveshare_epaper
     id: epaper_display
     model: 7.50inv2p
-    full_update_every: 10
+    full_update_every: 999  # Controlled manually via RTC memory counter (survives deep sleep)
     cs_pin: GPIO10
     dc_pin: GPIO11
     reset_pin:
