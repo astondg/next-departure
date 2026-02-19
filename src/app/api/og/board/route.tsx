@@ -1171,11 +1171,12 @@ export async function GET(request: NextRequest) {
               />
               {/* Rays above horizon */}
               {sunAlert.type === "sunrise" && (
-                <>
-                  <path d="M12 2v4" stroke={fg} strokeWidth="2" strokeLinecap="round" />
-                  <path d="M5.64 5.64l2.12 2.12" stroke={fg} strokeWidth="2" strokeLinecap="round" />
-                  <path d="M18.36 5.64l-2.12 2.12" stroke={fg} strokeWidth="2" strokeLinecap="round" />
-                </>
+                <path
+                  d="M12 2v4M5.64 5.64l2.12 2.12M18.36 5.64l-2.12 2.12"
+                  stroke={fg}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               )}
               {/* Arrow direction */}
               <path
