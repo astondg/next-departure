@@ -14,6 +14,7 @@ import {
   DeparturesResponse,
   Stop,
   Departure,
+  Disruption,
   TransportMode,
   Direction,
 } from '../types';
@@ -25,6 +26,7 @@ import {
   PTV_ROUTE_TYPES,
   PtvStop,
   PtvDeparture,
+  PtvDisruption,
   PtvRoute,
   PtvRun,
   PtvDirection,
@@ -138,7 +140,8 @@ export class PtvClient implements TransitProvider {
     ptvDeparture: PtvDeparture,
     routes: Record<string, PtvRoute>,
     runs: Record<string, PtvRun>,
-    directions: Record<string, PtvDirection>
+    directions: Record<string, PtvDirection>,
+    disruptions: Record<string, PtvDisruption>
   ): Departure {
     const route = routes[String(ptvDeparture.route_id)];
     const run = runs[ptvDeparture.run_ref];
@@ -147,6 +150,18 @@ export class PtvClient implements TransitProvider {
     const mode = route
       ? ROUTE_TYPE_TO_MODE[route.route_type]
       : 'bus';
+
+    // Find the first disruption title for this departure's alert text
+    let alertText: string | undefined;
+    if (ptvDeparture.disruption_ids?.length > 0) {
+      for (const disruptionId of ptvDeparture.disruption_ids) {
+        const disruption = disruptions[String(disruptionId)];
+        if (disruption?.title) {
+          alertText = disruption.title;
+          break;
+        }
+      }
+    }
 
     return {
       id: `${ptvDeparture.run_ref}-${ptvDeparture.scheduled_departure_utc}`,
@@ -170,6 +185,7 @@ export class PtvClient implements TransitProvider {
           !!ptvDeparture.estimated_departure_utc &&
           new Date(ptvDeparture.estimated_departure_utc) >
             new Date(ptvDeparture.scheduled_departure_utc),
+        alert: alertText,
       },
     };
   }
@@ -199,6 +215,7 @@ export class PtvClient implements TransitProvider {
           ];
 
     const allDepartures: Departure[] = [];
+    const allDisruptions = new Map<string, Disruption>();
     let stopInfo: Stop | null = null;
 
     for (const rt of routeTypes) {
@@ -222,13 +239,29 @@ export class PtvClient implements TransitProvider {
           }
         }
 
-        // Convert departures
+        // Collect disruptions from this response
+        if (response.disruptions) {
+          for (const [id, ptvDisruption] of Object.entries(response.disruptions)) {
+            if (!allDisruptions.has(id)) {
+              allDisruptions.set(id, {
+                id: String(ptvDisruption.disruption_id),
+                title: ptvDisruption.title,
+                description: ptvDisruption.description || undefined,
+                type: ptvDisruption.disruption_type || undefined,
+                url: ptvDisruption.url || undefined,
+              });
+            }
+          }
+        }
+
+        // Convert departures (pass disruptions for per-departure alert text)
         const departures = response.departures.map((dep) =>
           this.convertDeparture(
             dep,
             response.routes,
             response.runs,
-            response.directions
+            response.directions,
+            response.disruptions || {}
           )
         );
 
@@ -285,6 +318,7 @@ export class PtvClient implements TransitProvider {
         modes: [],
       },
       departures: filteredDepartures,
+      disruptions: allDisruptions.size > 0 ? Array.from(allDisruptions.values()) : undefined,
       fetchedAt: new Date().toISOString(),
     };
   }
