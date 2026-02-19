@@ -35,6 +35,7 @@ interface ModeSection {
   departures: Departure[];
   isLoading: boolean;
   error?: string;
+  hasDisruptions?: boolean;
 }
 
 async function getSettings(): Promise<UserSettings> {
@@ -103,7 +104,7 @@ async function fetchDepartures(
   mode: TransportMode,
   limit: number,
   maxMinutes: number
-): Promise<{ departures: Departure[]; stopName: string } | null> {
+): Promise<{ departures: Departure[]; stopName: string; hasDisruptions: boolean } | null> {
   try {
     if (!isProviderAvailable(providerId)) {
       console.error(`${providerId} provider not available`);
@@ -121,6 +122,7 @@ async function fetchDepartures(
     return {
       departures: result.departures,
       stopName: result.stop?.name || 'Unknown Stop',
+      hasDisruptions: (result.disruptions?.length ?? 0) > 0,
     };
   } catch (error) {
     console.error(`Error fetching ${mode} departures from ${providerId}:`, error);
@@ -153,6 +155,7 @@ export default async function HomePage() {
           stopName: result.stopName,
           departures: result.departures,
           isLoading: false,
+          hasDisruptions: result.hasDisruptions,
         };
       }
 

@@ -57,6 +57,7 @@ interface StopData {
   stopId: string;
   stopName: string;
   departures: Departure[];
+  hasDisruptions: boolean;
   error?: string;
 }
 
@@ -317,6 +318,7 @@ async function fetchStopDepartures(
         stopId,
         stopName: `${mode}:${stopId}`,
         departures: [],
+        hasDisruptions: false,
         error: "Invalid stop ID",
       };
     }
@@ -344,6 +346,7 @@ async function fetchStopDepartures(
       stopId,
       stopName: result.stop.name,
       departures: upcoming.slice(0, limit),
+      hasDisruptions: (result.disruptions?.length ?? 0) > 0,
     };
   } catch (error) {
     console.error(`Error fetching ${mode}:${stopId}:`, error);
@@ -352,6 +355,7 @@ async function fetchStopDepartures(
       stopId,
       stopName: `${mode}:${stopId}`,
       departures: [],
+      hasDisruptions: false,
       error: "Connection failed",
     };
   }
@@ -618,10 +622,36 @@ export async function GET(request: NextRequest) {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
+                flex: 1,
               }}
             >
               {stop.stopName}
             </span>
+            {/* Disruption warning icon */}
+            {stop.hasDisruptions && (
+              <svg
+                width={Math.round(18 * fontScale)}
+                height={Math.round(18 * fontScale)}
+                viewBox="0 0 24 24"
+                fill="none"
+                style={{ flexShrink: 0, marginLeft: `${Math.round(8 * fontScale)}px` }}
+              >
+                <path
+                  d="M12 2L1 21h22L12 2z"
+                  stroke={bg}
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path
+                  d="M12 9v5"
+                  stroke={bg}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <circle cx="12" cy="17.5" r="1" fill={bg} />
+              </svg>
+            )}
           </div>
 
           {/* Departures */}

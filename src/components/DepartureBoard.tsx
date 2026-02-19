@@ -31,6 +31,8 @@ interface ModeSection {
   error?: string;
   /** If true, group departures by direction and show N per direction */
   groupByDirection?: boolean;
+  /** Whether there are active disruptions affecting this stop */
+  hasDisruptions?: boolean;
 }
 
 interface DepartureBoardProps {
@@ -274,6 +276,32 @@ function ModeSectionComponent({
         <span className="text-xs opacity-75 truncate flex-1">
           {section.stopName}
         </span>
+        {/* Disruption warning icon */}
+        {section.hasDisruptions && (
+          <svg
+            width={16}
+            height={16}
+            viewBox="0 0 24 24"
+            fill="none"
+            className="flex-shrink-0"
+            aria-label="Service disruption"
+          >
+            <path
+              d="M12 2L1 21h22L12 2z"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <path
+              d="M12 9v5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <circle cx="12" cy="17.5" r="1" fill="currentColor" />
+          </svg>
+        )}
       </div>
 
       {/* Departures */}

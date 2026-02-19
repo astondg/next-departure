@@ -59,6 +59,7 @@ interface ModeSection {
   isLoading: boolean;
   error?: string;
   groupByDirection?: boolean;
+  hasDisruptions?: boolean;
 }
 
 interface NearbyStop {
@@ -236,6 +237,7 @@ export function ClientEnhancements({
             departures,
             isLoading: false,
             groupByDirection,
+            hasDisruptions: (data.disruptions?.length ?? 0) > 0,
           };
         } else {
           // On API error, return error state but we'll try to preserve previous data

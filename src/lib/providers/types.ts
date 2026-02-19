@@ -103,6 +103,26 @@ export interface Stop {
 }
 
 /**
+ * A service disruption affecting routes or stops
+ */
+export interface Disruption {
+  /** Provider-specific disruption ID */
+  id: string;
+
+  /** Short title describing the disruption */
+  title: string;
+
+  /** Longer description (may contain HTML from provider) */
+  description?: string;
+
+  /** Disruption type (e.g., "Planned Works", "Service Information") */
+  type?: string;
+
+  /** URL for more information */
+  url?: string;
+}
+
+/**
  * Response from a departures query
  */
 export interface DeparturesResponse {
@@ -114,6 +134,9 @@ export interface DeparturesResponse {
 
   /** When this data was fetched (ISO 8601) */
   fetchedAt: string;
+
+  /** Active disruptions affecting departures from this stop */
+  disruptions?: Disruption[];
 
   /** Provider-specific metadata */
   meta?: Record<string, unknown>;
