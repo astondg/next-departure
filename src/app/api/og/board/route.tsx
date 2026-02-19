@@ -15,11 +15,14 @@
  *   - maxMinutes: time window in minutes (default 30, max 120)
  *   - showAbsolute: show absolute times instead of relative (default false)
  *   - scale: render at higher resolution for crispness (default 1, max 3)
- *   - temp: temperature in Celsius from device sensor (optional, e.g., "21.5")
- *   - humidity: relative humidity percentage from device sensor (optional, e.g., "45")
+ *   - temp: temperature in Celsius from device sensor (optional, e.g., "21.5"). Overrides API weather.
+ *   - humidity: relative humidity percentage from device sensor (optional, e.g., "45"). Overrides API weather.
  *   - battery: battery level percentage from device sensor (optional, e.g., "87")
- *   - sidebar: enable sidebar layout with weather panel (default false, e.g., "true")
- *             When enabled, displays 2/3 timetable + 1/3 weather sidebar
+ *   - sidebar: enable sidebar layout with weather + alerts panel (default false, e.g., "true")
+ *             When enabled, displays 2/3 timetable + 1/3 sidebar with weather and conditional alerts.
+ *             Activates when device sensor data OR lat/lon location is provided.
+ *             Alerts shown when thresholds exceeded: rain (>=30%), UV (>=3), wind (>=32km/h),
+ *             AQI (>=101), sunrise/sunset (within 60min).
  *   - lat: latitude for weather data and timezone (e.g., "-37.8136")
  *   - lon: longitude for weather data and timezone (e.g., "144.9631")
  *   - tz: timezone for "Updated" timestamp (e.g., "Australia/Melbourne"). Falls back to auto-detect from lat/lon, then UTC.
@@ -59,24 +62,54 @@ interface StopData {
 
 interface WeatherData {
   timezone: string;
+  current: {
+    temperature: number | null; // Current outdoor temperature (°C)
+    humidity: number | null; // Current outdoor relative humidity (%)
+  };
   rain: {
     willRain: boolean;
     hour: number | null; // Hour (0-23) when rain is expected, null if no rain
     probability: number | null; // Probability percentage at that hour
   };
+  uv: {
+    alert: boolean; // True when max UV index >= 3 (WHO "moderate" threshold)
+    maxIndex: number | null; // Peak UV index value for remaining hours
+    peakHour: number | null; // Hour (0-23) of peak UV
+  };
+  wind: {
+    alert: boolean; // True when wind speed >= 32 km/h (Beaufort Force 5)
+    maxSpeed: number | null; // Peak wind speed in km/h
+    maxGust: number | null; // Peak gust speed in km/h
+  };
+  aqi: {
+    alert: boolean; // True when US AQI >= 101 (EPA "Unhealthy for Sensitive Groups")
+    value: number | null; // Current US AQI value
+  };
+  sun: {
+    sunrise: string | null; // ISO time string
+    sunset: string | null; // ISO time string
+  };
 }
 
-// Precipitation probability threshold (30%) - based on NWS "scattered" category
-// and research showing this is where risk-averse people start bringing umbrellas
-const RAIN_PROBABILITY_THRESHOLD = 30;
+// Alert thresholds based on internationally recognized standards
+const RAIN_PROBABILITY_THRESHOLD = 30; // NWS "scattered" category
+const UV_INDEX_THRESHOLD = 3; // WHO "moderate" - sun protection recommended
+const WIND_SPEED_THRESHOLD = 32; // km/h, Beaufort Force 5 "fresh breeze"
+const AQI_THRESHOLD = 101; // EPA "Unhealthy for Sensitive Groups"
+const SUN_ALERT_MINUTES = 60; // Show sunrise/sunset alert within this many minutes
 
 async function fetchWeather(
   lat: number,
   lon: number,
 ): Promise<WeatherData | null> {
   try {
-    // Fetch hourly precipitation probability for today with auto timezone
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation_probability&timezone=auto&forecast_days=1`;
+    // Fetch current conditions, hourly forecasts, and daily sun times in one call
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,relative_humidity_2m` +
+      `&hourly=precipitation_probability,uv_index,wind_speed_10m,wind_gusts_10m` +
+      `&daily=sunrise,sunset` +
+      `&timezone=auto&forecast_days=1`;
     const response = await fetch(url, {
       next: { revalidate: 1800 }, // Cache for 30 minutes
     });
@@ -89,12 +122,24 @@ async function fetchWeather(
     const data = await response.json();
     const timezone = data.timezone || "UTC";
     const utcOffsetSeconds: number = data.utc_offset_seconds || 0;
+
+    // Current conditions
+    const currentTemp: number | null = data.current?.temperature_2m ?? null;
+    const currentHumidity: number | null =
+      data.current?.relative_humidity_2m ?? null;
+
+    // Hourly arrays (indexed 0-23, local hours)
     const probabilities: number[] =
       data.hourly?.precipitation_probability || [];
+    const uvIndices: number[] = data.hourly?.uv_index || [];
+    const windSpeeds: number[] = data.hourly?.wind_speed_10m || [];
+    const windGusts: number[] = data.hourly?.wind_gusts_10m || [];
 
-    // Compute current local hour using the UTC offset from the API response.
-    // This avoids parsing naive local time strings or using toLocaleString.
-    // The hourly array is indexed 0-23 mapping directly to local hours.
+    // Daily sun times
+    const sunrise: string | null = data.daily?.sunrise?.[0] ?? null;
+    const sunset: string | null = data.daily?.sunset?.[0] ?? null;
+
+    // Compute current local hour using the UTC offset from the API response
     const nowMs = Date.now();
     const currentHour = Math.floor(
       (((nowMs + utcOffsetSeconds * 1000) % 86_400_000) + 86_400_000) %
@@ -102,30 +147,93 @@ async function fetchWeather(
         3_600_000,
     );
 
+    // Rain: first hour from now with probability >= threshold
+    let rain: WeatherData["rain"] = {
+      willRain: false,
+      hour: null,
+      probability: null,
+    };
     for (let i = currentHour; i < probabilities.length && i < 24; i++) {
       if (probabilities[i] >= RAIN_PROBABILITY_THRESHOLD) {
-        return {
-          timezone,
-          rain: {
-            willRain: true,
-            hour: i,
-            probability: probabilities[i],
-          },
-        };
+        rain = { willRain: true, hour: i, probability: probabilities[i] };
+        break;
+      }
+    }
+
+    // UV: peak index from remaining hours today
+    let maxUv = 0;
+    let uvPeakHour: number | null = null;
+    for (let i = currentHour; i < uvIndices.length && i < 24; i++) {
+      if (uvIndices[i] > maxUv) {
+        maxUv = uvIndices[i];
+        uvPeakHour = i;
+      }
+    }
+
+    // Wind: peak speed from remaining hours today
+    let maxWind = 0;
+    let maxGust = 0;
+    for (let i = currentHour; i < windSpeeds.length && i < 24; i++) {
+      if (windSpeeds[i] > maxWind) {
+        maxWind = windSpeeds[i];
+      }
+      if (windGusts[i] > maxGust) {
+        maxGust = windGusts[i];
       }
     }
 
     return {
       timezone,
-      rain: {
-        willRain: false,
-        hour: null,
-        probability: null,
+      current: {
+        temperature: currentTemp,
+        humidity: currentHumidity,
       },
+      rain,
+      uv: {
+        alert: maxUv >= UV_INDEX_THRESHOLD,
+        maxIndex: maxUv > 0 ? Math.round(maxUv) : null,
+        peakHour: uvPeakHour,
+      },
+      wind: {
+        alert: maxWind >= WIND_SPEED_THRESHOLD,
+        maxSpeed: maxWind > 0 ? Math.round(maxWind) : null,
+        maxGust: maxGust > 0 ? Math.round(maxGust) : null,
+      },
+      aqi: { alert: false, value: null }, // Populated by fetchAirQuality
+      sun: { sunrise, sunset },
     };
   } catch (error) {
     console.error("Weather fetch error:", error);
     return null;
+  }
+}
+
+async function fetchAirQuality(
+  lat: number,
+  lon: number,
+): Promise<{ alert: boolean; value: number | null }> {
+  try {
+    const url =
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
+      `&current=us_aqi&timezone=auto`;
+    const response = await fetch(url, {
+      next: { revalidate: 1800 }, // Cache for 30 minutes
+    });
+
+    if (!response.ok) {
+      console.error(`AQI API error: ${response.status}`);
+      return { alert: false, value: null };
+    }
+
+    const data = await response.json();
+    const aqi: number | null = data.current?.us_aqi ?? null;
+    return {
+      alert: aqi !== null && aqi >= AQI_THRESHOLD,
+      value: aqi,
+    };
+  } catch (error) {
+    console.error("AQI fetch error:", error);
+    return { alert: false, value: null };
   }
 }
 
@@ -308,9 +416,6 @@ export async function GET(request: NextRequest) {
   const hasDeviceData =
     deviceTemp !== null || deviceHumidity !== null || deviceBattery !== null;
 
-  // Sidebar layout: 2/3 timetable + 1/3 weather panel
-  const useSidebar = searchParams.get("sidebar") === "true" && hasDeviceData;
-
   // Location for weather data and timezone derivation
   const latParam = searchParams.get("lat");
   const lonParam = searchParams.get("lon");
@@ -318,6 +423,11 @@ export async function GET(request: NextRequest) {
   const lon = lonParam ? parseFloat(lonParam) : null;
   const hasLocation =
     lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon);
+
+  // Sidebar layout: 2/3 timetable + 1/3 weather panel
+  // Sidebar activates with sensor data OR location (for API-sourced weather)
+  const useSidebar =
+    searchParams.get("sidebar") === "true" && (hasDeviceData || hasLocation);
 
   // Timezone: prefer explicit tz param if provided, otherwise derive from weather API
   const tzParam = searchParams.get("tz");
@@ -335,15 +445,24 @@ export async function GET(request: NextRequest) {
     return new Response("Missing required parameter: stops", { status: 400 });
   }
 
-  // Load fonts (cached), departure data, and weather in parallel
+  // Load fonts (cached), departure data, weather, and AQI in parallel
   const stopRequests = parseStops(stopsParam);
-  const [fonts, weatherData, ...stopDataResults] = await Promise.all([
-    getFonts(),
-    hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
-    ...stopRequests.map(({ mode, stopId, directionIds }) =>
-      fetchStopDepartures(mode, stopId, limit, maxMinutes, directionIds),
-    ),
-  ]);
+  const [fonts, weatherDataRaw, aqiData, ...stopDataResults] =
+    await Promise.all([
+      getFonts(),
+      hasLocation ? fetchWeather(lat!, lon!) : Promise.resolve(null),
+      hasLocation
+        ? fetchAirQuality(lat!, lon!)
+        : Promise.resolve({ alert: false, value: null }),
+      ...stopRequests.map(({ mode, stopId, directionIds }) =>
+        fetchStopDepartures(mode, stopId, limit, maxMinutes, directionIds),
+      ),
+    ]);
+
+  // Merge AQI data into weather data
+  const weatherData: WeatherData | null = weatherDataRaw
+    ? { ...weatherDataRaw, aqi: aqiData }
+    : null;
 
   const stopData = stopDataResults as StopData[];
 
@@ -445,9 +564,10 @@ export async function GET(request: NextRequest) {
   const sidebarFontSize = {
     temp: Math.round(64 * scale),
     humidity: Math.round(32 * scale),
-    rain: Math.round(24 * scale),
+    alert: Math.round(24 * scale), // Alert text (rain time, UV value, etc.)
     label: Math.round(14 * scale),
   };
+  const alertIconSize = Math.round(32 * scale); // Consistent icon size for all alerts
 
   // Timetable content (shared between both layouts)
   const timetableContent = (
@@ -762,7 +882,47 @@ export async function GET(request: NextRequest) {
     </div>
   );
 
-  // Sidebar content (weather panel)
+  // Resolve temperature and humidity: prefer device sensor data, fall back to API
+  const displayTemp =
+    deviceTemp ?? (weatherData as WeatherData | null)?.current?.temperature ?? null;
+  const displayHumidity =
+    deviceHumidity ??
+    (weatherData as WeatherData | null)?.current?.humidity ??
+    null;
+
+  // Compute sunrise/sunset alert: show when within SUN_ALERT_MINUTES
+  const weather = weatherData as WeatherData | null;
+  let sunAlert: { type: "sunrise" | "sunset"; minutesUntil: number } | null =
+    null;
+  if (weather?.sun) {
+    const nowMs = Date.now();
+    for (const type of ["sunrise", "sunset"] as const) {
+      const isoTime = weather.sun[type];
+      if (isoTime) {
+        const eventMs = new Date(isoTime).getTime();
+        const diffMin = Math.round((eventMs - nowMs) / 60000);
+        if (diffMin > 0 && diffMin <= SUN_ALERT_MINUTES) {
+          sunAlert = { type, minutesUntil: diffMin };
+          break; // Show whichever is sooner
+        }
+      }
+    }
+  }
+
+  // Alert row style shared across all alert indicators
+  const alertRowStyle = {
+    display: "flex" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: `${Math.round(8 * scale)}px`,
+  };
+  const alertTextStyle = {
+    fontSize: `${sidebarFontSize.alert}px`,
+    fontWeight: 700,
+    color: fg,
+  };
+
+  // Sidebar content (weather + alerts panel)
   const sidebarContent = useSidebar ? (
     <div
       style={{
@@ -774,7 +934,7 @@ export async function GET(request: NextRequest) {
         padding: `${padding}px`,
       }}
     >
-      {/* Weather data (centered, large) */}
+      {/* Weather data and alerts (centered) */}
       <div
         style={{
           display: "flex",
@@ -786,7 +946,7 @@ export async function GET(request: NextRequest) {
         }}
       >
         {/* Temperature (large, primary) */}
-        {deviceTemp !== null && (
+        {displayTemp !== null && (
           <div
             style={{
               display: "flex",
@@ -802,7 +962,7 @@ export async function GET(request: NextRequest) {
                 color: fg,
               }}
             >
-              {Math.round(deviceTemp)}
+              {Math.round(displayTemp)}
             </span>
             <span
               style={{
@@ -818,7 +978,7 @@ export async function GET(request: NextRequest) {
         )}
 
         {/* Humidity (medium, secondary) */}
-        {deviceHumidity !== null && (
+        {displayHumidity !== null && (
           <div
             style={{
               display: "flex",
@@ -834,7 +994,7 @@ export async function GET(request: NextRequest) {
                 color: fg,
               }}
             >
-              {Math.round(deviceHumidity)}%
+              {Math.round(displayHumidity)}%
             </span>
             <span
               style={{
@@ -849,25 +1009,17 @@ export async function GET(request: NextRequest) {
           </div>
         )}
 
-        {/* Rain indicator (only shown when rain expected) */}
-        {(weatherData as WeatherData | null)?.rain?.willRain && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: `${Math.round(8 * scale)}px`,
-              marginTop: `${Math.round(8 * scale)}px`,
-            }}
-          >
-            {/* Rain cloud icon */}
+        {/* === Alerts section (conditional, icon + value pattern) === */}
+
+        {/* Rain alert */}
+        {weather?.rain?.willRain && (
+          <div style={alertRowStyle}>
             <svg
-              width={Math.round(40 * scale)}
-              height={Math.round(40 * scale)}
+              width={alertIconSize}
+              height={alertIconSize}
               viewBox="0 0 24 24"
               fill="none"
             >
-              {/* Cloud */}
               <path
                 d="M19 18H6a4 4 0 0 1-1-7.9 5.5 5.5 0 0 1 10.8-1.3A3.5 3.5 0 0 1 19 13v0a3 3 0 0 1 0 5z"
                 stroke={fg}
@@ -876,7 +1028,6 @@ export async function GET(request: NextRequest) {
                 strokeLinejoin="round"
                 fill="none"
               />
-              {/* Rain drops */}
               <path
                 d="M8 19v2M12 19v2M16 19v2"
                 stroke={fg}
@@ -884,16 +1035,129 @@ export async function GET(request: NextRequest) {
                 strokeLinecap="round"
               />
             </svg>
-            {/* Time when rain expected */}
-            <span
-              style={{
-                fontSize: `${sidebarFontSize.rain}px`,
-                fontWeight: 700,
-                color: fg,
-              }}
+            <span style={alertTextStyle}>
+              ~{weather.rain.hour! % 12 || 12}
+              {weather.rain.hour! < 12 ? "am" : "pm"}
+            </span>
+          </div>
+        )}
+
+        {/* UV alert (shown when max UV index >= 3) */}
+        {weather?.uv?.alert && (
+          <div style={alertRowStyle}>
+            <svg
+              width={alertIconSize}
+              height={alertIconSize}
+              viewBox="0 0 24 24"
+              fill="none"
             >
-              ~{(weatherData as WeatherData).rain.hour! % 12 || 12}
-              {(weatherData as WeatherData).rain.hour! < 12 ? "am" : "pm"}
+              {/* Sun circle */}
+              <circle cx="12" cy="12" r="4" stroke={fg} strokeWidth="2" />
+              {/* Sun rays */}
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span style={alertTextStyle}>
+              UV{weather.uv.maxIndex} ~
+              {weather.uv.peakHour! % 12 || 12}
+              {weather.uv.peakHour! < 12 ? "am" : "pm"}
+            </span>
+          </div>
+        )}
+
+        {/* Wind alert (shown when wind >= 32 km/h) */}
+        {weather?.wind?.alert && (
+          <div style={alertRowStyle}>
+            <svg
+              width={alertIconSize}
+              height={alertIconSize}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <path
+                d="M9.59 4.59A2 2 0 1 1 11 8H2M12.59 19.41A2 2 0 1 0 14 16H2M17.73 7.73A2.5 2.5 0 1 1 19 12H2"
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span style={alertTextStyle}>
+              {weather.wind.maxSpeed}km/h
+            </span>
+          </div>
+        )}
+
+        {/* AQI alert (shown when US AQI >= 101) */}
+        {weather?.aqi?.alert && (
+          <div style={alertRowStyle}>
+            <svg
+              width={alertIconSize}
+              height={alertIconSize}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              {/* Haze/smog lines */}
+              <path
+                d="M3 8h18M5 12h14M3 16h18"
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              {/* Warning dot */}
+              <circle cx="20" cy="4" r="2.5" fill={fg} />
+            </svg>
+            <span style={alertTextStyle}>
+              AQI {weather.aqi.value}
+            </span>
+          </div>
+        )}
+
+        {/* Sunrise/sunset alert (shown within 60 min of event) */}
+        {sunAlert && (
+          <div style={alertRowStyle}>
+            <svg
+              width={alertIconSize}
+              height={alertIconSize}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              {/* Horizon line */}
+              <path d="M2 18h20" stroke={fg} strokeWidth="2" strokeLinecap="round" />
+              {/* Half sun on horizon */}
+              <path
+                d={
+                  sunAlert.type === "sunrise"
+                    ? "M12 14a6 6 0 0 1 6-6M12 14a6 6 0 0 0-6-6" // Rising arc
+                    : "M12 14a6 6 0 0 0 6 0M12 14a6 6 0 0 1-6 0" // Setting arc (dipping)
+                }
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              {/* Rays above horizon */}
+              {sunAlert.type === "sunrise" && (
+                <>
+                  <path d="M12 2v4" stroke={fg} strokeWidth="2" strokeLinecap="round" />
+                  <path d="M5.64 5.64l2.12 2.12" stroke={fg} strokeWidth="2" strokeLinecap="round" />
+                  <path d="M18.36 5.64l-2.12 2.12" stroke={fg} strokeWidth="2" strokeLinecap="round" />
+                </>
+              )}
+              {/* Arrow direction */}
+              <path
+                d={sunAlert.type === "sunrise" ? "M12 10V6M9 8l3-3 3 3" : "M12 10v4M9 12l3 3 3-3"}
+                stroke={fg}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span style={alertTextStyle}>
+              {sunAlert.minutesUntil}m
             </span>
           </div>
         )}

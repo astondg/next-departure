@@ -2,10 +2,13 @@
 # ESP32-S3 with 7.5" e-ink display
 #
 # Fetches departure board image from API and displays on e-ink.
-# Includes temperature, humidity, and battery level from onboard sensors.
+# Includes battery level from onboard sensor.
+# Weather data (temp, humidity, rain, UV, wind, AQI, sunrise/sunset) is
+# sourced server-side via Open-Meteo API using the lat/lon coordinates.
+# Device temp/humidity sensors can optionally override API values via query params.
 #
 # Layout options (set use_sidebar in substitutions):
-#   - sidebar=true: 2/3 timetable + 1/3 weather panel (large temp/humidity display)
+#   - sidebar=true: 2/3 timetable + 1/3 weather & alerts panel
 #   - sidebar=false: Full-width timetable with sensor data in footer
 #
 # Uses deep sleep for battery efficiency:
@@ -16,7 +19,7 @@
 
 substitutions:
   board_url: "https://next-departure.vercel.app/api/og/board?stops=tram:2070,train:1201:1&limit=3&invert=true"
-  # Set to "true" to enable sidebar layout with large weather panel (1/3 of screen)
+  # Set to "true" to enable sidebar layout with weather & alerts panel (1/3 of screen)
   # Set to "false" to show sensor data in footer instead
   use_sidebar: "true"
   # Location for weather data and timezone derivation (lat/lon in decimal degrees)
@@ -34,8 +37,6 @@ esphome:
           wifi.connected:
       - wait_until:
           lambda: "return id(sntp_time).now().is_valid();"
-      # Read sensor values before fetching image
-      - component.update: sht4x_sensor
       # Enable battery voltage divider, read, then disable to save power
       - switch.turn_on: battery_enable
       - delay: 50ms # Allow voltage to stabilize
@@ -44,16 +45,15 @@ esphome:
       - delay: 50ms
       - component.update: battery_level
       - delay: 50ms
-      # Update URL with sensor data and fetch image
+      # Update URL with battery and location, then fetch image
+      # Weather data (temp, humidity, etc.) sourced server-side via Open-Meteo API
       - online_image.set_url:
           id: departure_image
           url: !lambda |-
             char url[512];
             snprintf(url, sizeof(url),
-              "${board_url}&t=%lu&temp=%.1f&humidity=%.0f&battery=%.0f&sidebar=${use_sidebar}&lat=${latitude}&lon=${longitude}",
+              "${board_url}&t=%lu&battery=%.0f&sidebar=${use_sidebar}&lat=${latitude}&lon=${longitude}",
               millis(),
-              id(temperature).state,
-              id(humidity).state,
               id(battery_level).state);
             return std::string(url);
       # Trigger the image download (set_url alone doesn't fetch)
@@ -133,28 +133,30 @@ http_request:
   verify_ssl: false
   timeout: 15s
 
-i2c:
-  sda: GPIO19
-  scl: GPIO20
-  scan: true
+# I2C and SHT4x sensor disabled - weather now sourced from Open-Meteo API.
+# Uncomment and add &temp=%.1f&humidity=%.0f to URL to use device sensors instead.
+# i2c:
+#   sda: GPIO19
+#   scl: GPIO20
+#   scan: true
+#
+# sensor (SHT4x):
+#   - platform: sht4x
+#     id: sht4x_sensor
+#     address: 0x44
+#     temperature:
+#       name: "Temperature"
+#       id: temperature
+#       unit_of_measurement: "°C"
+#       accuracy_decimals: 1
+#     humidity:
+#       name: "Humidity"
+#       id: humidity
+#       unit_of_measurement: "%"
+#       accuracy_decimals: 0
+#     update_interval: never
 
 sensor:
-  # SHT4x Temperature & Humidity sensor (built-in on E1001 at address 0x44)
-  - platform: sht4x
-    id: sht4x_sensor
-    address: 0x44
-    temperature:
-      name: "Temperature"
-      id: temperature
-      unit_of_measurement: "°C"
-      accuracy_decimals: 1
-    humidity:
-      name: "Humidity"
-      id: humidity
-      unit_of_measurement: "%"
-      accuracy_decimals: 0
-    update_interval: never # Only update on demand
-
   # Battery voltage monitoring
   - platform: adc
     pin: GPIO1
