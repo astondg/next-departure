@@ -373,12 +373,49 @@ function parseStops(
   });
 }
 
+// Cache the static error image at module level
+let _errorImagePromise: Promise<Buffer> | null = null;
+function getErrorImage() {
+  if (!_errorImagePromise) {
+    _errorImagePromise = readFile(
+      join(process.cwd(), "src/app/api/og/board/error.png"),
+    );
+  }
+  return _errorImagePromise;
+}
+
+async function respondWithErrorImage(): Promise<Response> {
+  const buffer = await getErrorImage();
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": buffer.byteLength.toString(),
+      "Cache-Control": "public, max-age=30",
+      "X-Next-Refresh": "60",
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const { searchParams } = url;
 
   // Parse query parameters
   const stopsParam = searchParams.get("stops");
+
+  if (!stopsParam) {
+    return respondWithErrorImage();
+  }
+
+  try {
+    return await renderBoard(searchParams, stopsParam);
+  } catch (error) {
+    console.error("OG board render error:", error);
+    return respondWithErrorImage();
+  }
+}
+
+async function renderBoard(searchParams: URLSearchParams, stopsParam: string) {
   const orientation = searchParams.get("orientation") || "landscape";
   const isPortrait = orientation === "portrait";
 
@@ -444,10 +481,6 @@ export async function GET(request: NextRequest) {
   // Apply scale for higher resolution rendering
   const width = Math.round(baseWidth * scale);
   const height = Math.round(baseHeight * scale);
-
-  if (!stopsParam) {
-    return new Response("Missing required parameter: stops", { status: 400 });
-  }
 
   // Load fonts (cached), departure data, weather, and AQI in parallel
   const stopRequests = parseStops(stopsParam);
