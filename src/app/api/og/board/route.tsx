@@ -445,6 +445,7 @@ export async function GET(request: NextRequest) {
   const sidebarFontSize = {
     temp: Math.round(64 * scale),
     humidity: Math.round(32 * scale),
+    rain: Math.round(24 * scale),
     label: Math.round(14 * scale),
   };
 
@@ -861,8 +862,8 @@ export async function GET(request: NextRequest) {
           >
             {/* Rain cloud icon */}
             <svg
-              width={Math.round(28 * scale)}
-              height={Math.round(28 * scale)}
+              width={Math.round(40 * scale)}
+              height={Math.round(40 * scale)}
               viewBox="0 0 24 24"
               fill="none"
             >
@@ -886,7 +887,7 @@ export async function GET(request: NextRequest) {
             {/* Time when rain expected */}
             <span
               style={{
-                fontSize: `${sidebarFontSize.label}px`,
+                fontSize: `${sidebarFontSize.rain}px`,
                 fontWeight: 700,
                 color: fg,
               }}
