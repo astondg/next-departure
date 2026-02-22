@@ -23,8 +23,9 @@ export const metadata: Metadata = {
     'Real-time public transport departure times optimized for e-ink displays',
 };
 
-// Force dynamic rendering so we always get fresh data
-export const dynamic = 'force-dynamic';
+// ISR: regenerate every 120s. Client JS takes over after hydration and
+// polls /api/departures directly, so brief staleness on initial render is fine.
+export const revalidate = 120;
 
 const SETTINGS_KEY = 'next-departure-settings';
 

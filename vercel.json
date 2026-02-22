@@ -1,0 +1,8 @@
+{
+  "fluid": true,
+  "functions": {
+    "src/app/api/departures/route.ts": { "memory": 512 },
+    "src/app/api/stops/route.ts": { "memory": 512 },
+    "src/app/api/nearby/route.ts": { "memory": 512 }
+  }
+}

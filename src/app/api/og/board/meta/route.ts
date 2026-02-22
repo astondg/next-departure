@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=30",
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=30",
         "X-Next-Refresh": String(refreshSeconds),
       },
     },

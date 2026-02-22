@@ -390,7 +390,7 @@ async function respondWithErrorImage(): Promise<Response> {
     headers: {
       "Content-Type": "image/png",
       "Content-Length": buffer.byteLength.toString(),
-      "Cache-Control": "public, max-age=30",
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=30",
       "X-Next-Refresh": "60",
     },
   });
@@ -1366,7 +1366,7 @@ async function renderBoard(searchParams: URLSearchParams, stopsParam: string) {
     headers: {
       "Content-Type": "image/png",
       "Content-Length": buffer.byteLength.toString(),
-      "Cache-Control": "public, max-age=30",
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=30",
       "X-Next-Refresh": String(refreshSeconds),
     },
   });

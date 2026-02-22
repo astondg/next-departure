@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     // Return with cache headers for client-side caching
     return NextResponse.json(departures, {
       headers: {
-        'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=90',
       },
     });
   } catch (error) {
