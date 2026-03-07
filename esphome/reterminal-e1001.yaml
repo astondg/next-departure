@@ -52,8 +52,8 @@ esphome:
           url: !lambda |-
             char url[512];
             snprintf(url, sizeof(url),
-              "${board_url}&t=%lu&battery=%.0f&sidebar=${use_sidebar}&lat=${latitude}&lon=${longitude}",
-              millis(),
+              "${board_url}&t=%ld&battery=%.0f&sidebar=${use_sidebar}&lat=${latitude}&lon=${longitude}",
+              (long)id(sntp_time).now().timestamp,
               id(battery_level).state);
             return std::string(url);
       # Trigger the image download (set_url alone doesn't fetch)
