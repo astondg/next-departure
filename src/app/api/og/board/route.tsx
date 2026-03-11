@@ -255,7 +255,9 @@ function formatDepartureTime(
 ): TimeInfo {
   const effectiveTime = estimatedTime || scheduledTime;
   const targetTime = new Date(effectiveTime);
-  const now = new Date();
+  // Bias 15s into the future to account for image generation + download + e-ink render time.
+  // Without this, the static image shows "1m" when the tram is already arriving.
+  const now = new Date(Date.now() + 15_000);
 
   // Calculate delay (positive = late, negative = early)
   let delayMinutes = 0;
@@ -324,7 +326,8 @@ async function fetchStopDepartures(
     }
 
     // Filter out departed services (same logic as client/server dashboards)
-    const now = new Date();
+    // Bias 15s forward to match the display time bias in formatDepartureTime
+    const now = new Date(Date.now() + 15_000);
     let upcoming = (result.departures || []).filter((d: Departure) => {
       const time = new Date(d.estimatedTime || d.scheduledTime);
       const diffMinutes = Math.round(
