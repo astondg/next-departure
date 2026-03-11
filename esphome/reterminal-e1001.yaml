@@ -18,7 +18,8 @@
 # (WiFi, image download, etc.) so total cycle hits the target interval.
 
 substitutions:
-  board_url: "https://next-departure.vercel.app/api/og/board?stops=tram:2070,train:1201:1&limit=3&invert=true"
+  board_host: !secret board_host
+  board_url: "${board_host}/api/og/board?stops=tram:2070,train:1201:1&limit=3&invert=true"
   # Set to "true" to enable sidebar layout with weather & alerts panel (1/3 of screen)
   # Set to "false" to show sensor data in footer instead
   use_sidebar: "true"
@@ -61,7 +62,7 @@ esphome:
       # Wait for the download to actually complete instead of a fixed delay
       - wait_until:
           condition:
-            lambda: 'return id(image_downloaded);'
+            lambda: "return id(image_downloaded);"
           timeout: 20s
       - component.update: epaper_display
       - delay: 1s
@@ -183,7 +184,7 @@ globals:
   - id: image_downloaded
     type: bool
     restore_value: no
-    initial_value: 'false'
+    initial_value: "false"
 
 online_image:
   - id: departure_image
@@ -195,14 +196,14 @@ online_image:
     on_download_finished:
       - globals.set:
           id: image_downloaded
-          value: 'true'
+          value: "true"
     on_error:
       - logger.log:
           level: ERROR
           format: "Image download failed"
       - globals.set:
           id: image_downloaded
-          value: 'true'
+          value: "true"
 
 spi:
   clk_pin: GPIO7
