@@ -39,6 +39,9 @@ ecosystem.config.js
 # vercel
 .vercel
 
+# launchd logs (deploy/bootstrap-launchd.sh)
+/logs
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

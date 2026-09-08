@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.astondean.next-departure</string>
+  <!-- LaunchDaemon, not a GUI Login Item: it previously only started when the
+       service account logged into a GUI session, which silently broke the
+       e-ink display the moment auto-login got turned off (for unrelated
+       LM Studio testing on the same Mac mini). This starts at boot
+       regardless of any login state, and KeepAlive restarts it if it
+       crashes — this is the actual long-running server process, unlike
+       home-platform's llmster daemon/server split. -->
+  <key>UserName</key><string>@SERVICE_USER@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>@REPO@/scripts/start-server.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>@SERVICE_HOME@</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>@REPO@/logs/next-departure.out.log</string>
+  <key>StandardErrorPath</key><string>@REPO@/logs/next-departure.err.log</string>
+</dict>
+</plist>
