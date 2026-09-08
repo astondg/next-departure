@@ -9,6 +9,17 @@ SERVICE_USER="${SERVICE_USER:-$(id -un)}"
 SERVICE_HOME="${SERVICE_HOME:-$HOME}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+reachable() { curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; }
+
+# Idempotent short-circuit: if an admin already ran the sudo step below (from
+# a previous invocation), re-running this as the (still non-admin) service
+# account should just confirm success — not repeat instructions for a step
+# that's already done.
+if reachable; then
+  echo "==> next-departure already reachable at http://127.0.0.1:3000 — nothing to do"
+  exit 0
+fi
+
 if [ ! -f "$REPO/.env.local" ]; then
   echo "!! $REPO/.env.local not found — copy .env.example there and fill in" >&2
   echo "   PTV_DEV_ID / PTV_API_KEY / TFNSW_API_KEY, then re-run this script." >&2
@@ -55,11 +66,11 @@ fi
 
 echo "==> waiting for the server to come up"
 for _ in $(seq 1 30); do
-  curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1 && break
+  reachable && break
   sleep 1
 done
 
-if curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; then
+if reachable; then
   echo "==> next-departure reachable at http://127.0.0.1:3000"
 else
   echo "!! not reachable yet — check $REPO/logs/next-departure.{out,err}.log"
