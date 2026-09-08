@@ -10,6 +10,12 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
+# nvm-installed node isn't on PATH under launchd's `bash -lc` — nvm's own
+# setup lives in .zshrc (the actual login shell here), which a bash login
+# shell never sources. Add it directly rather than depend on shell-profile
+# sourcing at all. Update this if you upgrade node via nvm.
+export PATH="$HOME/.nvm/versions/node/v22.11.0/bin:$PATH"
+
 if [ ! -f .env.local ]; then
   echo "!! $REPO/.env.local not found — copy .env.example there and fill in credentials" >&2
   exit 1
